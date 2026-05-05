@@ -1,0 +1,10 @@
+{
+  "type": "rig",
+  "version": 1,
+  "name": "wallball",
+  "git_url": "git@leafle-github:leafle/wallball.git",
+  "created_at": "2026-05-05T15:21:16.546537-04:00",
+  "beads": {
+    "prefix": "wb"
+  }
+}

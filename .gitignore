@@ -3,3 +3,16 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Gas Town runtime files
+.runtime/
+.land-worktree/
+polecats/
+crew/
+refinery/
+witness/
+mayor/
+deacon/
+plugins/
+rigs.json
+settings/escalation.json
