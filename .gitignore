@@ -16,3 +16,12 @@ deacon/
 plugins/
 rigs.json
 settings/escalation.json
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local machine files
+.DS_Store
+CLAUDE.local.md
+*.log
