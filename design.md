@@ -71,7 +71,7 @@ Use a browser-based TypeScript stack:
 - npm for scripts and dependency management
 - Dolt for versioned match history, high scores, and friend/player data
 
-Phaser is preferred over raw Canvas 2D because the game needs scenes, animation, input handling, collision helpers, asset loading, and state transitions. Phaser gives those primitives without turning the first version into a custom engine project.
+Phaser is preferred over raw Canvas 2D because the game needs scenes, animation, input handling, collision helpers, asset loading, and state transitions. Phaser gives those primitives without turning the first version into a custom engine project. Note: While Phaser's built-in Arcade Physics is convenient, it is tied to frame rate and not strictly deterministic. To ensure strict determinism for the remote two-player stretch goal, core interactions like ball trajectories should be calculated mathematically (based on start point, end point, and time) rather than relying purely on the physics engine's velocity and acceleration.
 
 Avoid Three.js for the first prototype. The reference feel is sprite-based arcade baseball, and the main challenge is timing, feedback, and readability rather than 3D physical realism.
 
@@ -81,7 +81,7 @@ Use a fixed logical game resolution with responsive browser scaling. A good star
 
 The primary camera should be the wall-facing view from behind the pitcher across batting, pitching, and fielding phases unless playability testing proves a temporary fielding adjustment is necessary. On phones, this view should preserve the pitcher in the lower foreground, the target wall toward the upper field, and enough side space for thumb controls without covering active play.
 
-Phones are a v0 target, not a later port. The first implementation should target mobile landscape play with a clear rotate-device prompt for portrait orientation if portrait play is not yet usable. Touch controls should be large, low-latency, and reachable with thumbs: a swing/action zone, directional fielding control, and any pitch controls should avoid tiny buttons and avoid covering the ball, wall target, or active fielder.
+Phones are a v0 target, not a later port. The first implementation should target mobile landscape play with a clear rotate-device prompt for portrait orientation if portrait play is not yet usable. Touch controls should be large, low-latency, and reachable with thumbs: a swing/action zone, directional fielding control, and any pitch controls should avoid tiny buttons and avoid covering the ball, wall target, or active fielder. To ensure the low-latency input critical for batting timing, touch event listeners must use `pointerdown` rather than standard click events.
 
 The HUD must have a mobile layout that preserves the essential information: inning, score, outs, current batter, current matchup, and short interaction callouts. Text should be readable on small screens without overlapping the playfield.
 
@@ -242,7 +242,7 @@ Recommended first beads:
 5. Add `.gastown/rules.md` describing the Phaser/TypeScript architecture, v0 scope, testing expectations, and Dolt-backed data requirements.
 6. Add core domain types for teams, predefined rosters, players, inning state, outs, score, batter order, match summaries, and high scores.
 7. Initialize Dolt and add the first schema for teams, players, roster membership, matches, match events, high scores, and interaction prompts.
-8. Add a typed data client with fixture fallback and Dolt-backed repository tests where practical.
+8. Add a typed data client with fixture fallback and Dolt-backed repository tests where practical. Heavily utilize this fixture fallback during early UI and gameplay beads so that frontend progress is not blocked by database configuration.
 9. Add desktop keyboard controls and phone touch-control abstractions for swing, pitch, and fielding actions.
 10. Add the behind-pitcher wall-facing camera framing with the pitcher, batter, wall target, and mobile-safe control zones.
 11. Prototype batting timing and ball launch.
