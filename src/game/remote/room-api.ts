@@ -27,6 +27,7 @@ const remoteIntentKinds: RemoteIntentKind[] = [
   "pitch",
   "swing",
   "fielder-move",
+  "recover-ball",
   "ready"
 ];
 const remotePlayerSides: RemotePlayerSide[] = ["away", "home"];

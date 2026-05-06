@@ -4,7 +4,12 @@ import type { BattingSide } from "../domain/rules";
 
 export type RemotePlayerRole = "host" | "guest";
 export type RemotePlayerSide = BattingSide;
-export type RemoteIntentKind = "pitch" | "swing" | "fielder-move" | "ready";
+export type RemoteIntentKind =
+  | "pitch"
+  | "swing"
+  | "fielder-move"
+  | "recover-ball"
+  | "ready";
 export type RemoteIntentPayloadValue = string | number | boolean | null;
 
 export interface RemoteRoomTeamIds {
