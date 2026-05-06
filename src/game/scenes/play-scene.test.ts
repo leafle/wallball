@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createWallballPlayScene,
   dispatchWallballPlaySceneControlIntent,
+  WALLBALL_PLAY_SCENE_PROJECTION_EVENT,
+  type WallballPlaySceneProjectionEventDetail,
   updateWallballPlayScene
 } from "./play-scene";
 
@@ -51,6 +53,7 @@ interface FakeSceneContext {
       style: Record<string, string>
     ) => FakeSceneObject;
   };
+  wallballProjectionTarget?: Pick<EventTarget, "dispatchEvent">;
 }
 
 describe("createWallballPlayScene", () => {
@@ -121,6 +124,56 @@ describe("createWallballPlayScene", () => {
         expect.objectContaining({ kind: "text", text: "Danny vs Minkus" })
       ])
     );
+  });
+
+  it("emits typed projection snapshots for the post-match panel", () => {
+    const calls: DrawCall[] = [];
+    const projectionEvents: WallballPlaySceneProjectionEventDetail[] = [];
+    const scene = createFakeSceneContext(calls);
+    scene.wallballProjectionTarget = {
+      dispatchEvent: (event) => {
+        if (event.type === WALLBALL_PLAY_SCENE_PROJECTION_EVENT) {
+          projectionEvents.push(
+            (event as CustomEvent<WallballPlaySceneProjectionEventDetail>).detail
+          );
+        }
+
+        return true;
+      }
+    };
+
+    createWallballPlayScene.call(scene);
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+    updateWallballPlayScene.call(scene, 1_500, 0);
+
+    expect(projectionEvents.at(-1)).toMatchObject({
+      loop: {
+        phase: {
+          kind: "ready-for-at-bat"
+        }
+      },
+      projection: {
+        hud: {
+          awayScore: 1,
+          batterName: "Minkus"
+        }
+      }
+    });
   });
 
   it("draws local setup controls and restarts with selected teams", () => {

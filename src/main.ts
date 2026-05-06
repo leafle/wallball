@@ -1,5 +1,11 @@
 import { GAME_HEIGHT, GAME_WIDTH, createBaseGameConfig } from "./game/config";
+import {
+  createFixtureWallballDataClient,
+  type WallballDataClient
+} from "./game/data/game-data-client";
 import { loadPredefinedRosters } from "./game/data/fixtures";
+import type { HighScore } from "./game/domain/high-scores";
+import type { MatchSummary } from "./game/domain/match-summary";
 import {
   mountKeyboardGameplayControls,
   mountTouchGameplayControls,
@@ -10,7 +16,6 @@ import {
   type MountedPhaserGameShell
 } from "./game/phaser-shell";
 import { createRemoteRoomClient } from "./game/remote/room-client";
-import { mountBattingPrototype } from "./game/ui/batting-prototype";
 import type {
   RemoteAssignment,
   RemoteIntentKind,
@@ -18,6 +23,18 @@ import type {
   RemotePlayerSide,
   RemoteRoomSnapshot
 } from "./game/remote/room-store";
+import {
+  WALLBALL_PLAY_SCENE_PROJECTION_EVENT,
+  type WallballPlaySceneProjectionEventDetail
+} from "./game/scenes/play-scene";
+import { recordLocalMatchCompletion } from "./game/systems/match-completion";
+import { mountBattingPrototype } from "./game/ui/batting-prototype";
+import {
+  projectPostMatchResultsPanel,
+  type PostMatchPlayerLabel,
+  type PostMatchRecordState,
+  type PostMatchResultsPanelProjection
+} from "./game/ui/post-match-results";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -28,7 +45,9 @@ if (!app) {
 
 const config = createBaseGameConfig();
 const battingPrototypeParent = "batting-prototype";
+const postMatchResultsParent = "post-match-results";
 const rosters = loadPredefinedRosters();
+const localDataClient = createFixtureWallballDataClient();
 const remoteClient = createRemoteRoomClient();
 
 interface RemoteUiState {
@@ -44,6 +63,29 @@ const remoteState: RemoteUiState = {
   snapshot: null,
   unsubscribe: null
 };
+
+interface LocalResultsUiState {
+  activeCompletionKey: string | null;
+  errorMessage: string | null;
+  highScores: HighScore[];
+  players: PostMatchPlayerLabel[];
+  projection: WallballPlaySceneProjectionEventDetail["projection"] | null;
+  recordState: PostMatchRecordState;
+  recordingCompletionKey: string | null;
+  summary: MatchSummary | null;
+}
+
+const localResultsState: LocalResultsUiState = {
+  activeCompletionKey: null,
+  errorMessage: null,
+  highScores: [],
+  players: [],
+  projection: null,
+  recordState: "idle",
+  recordingCompletionKey: null,
+  summary: null
+};
+
 let phaserShell: MountedPhaserGameShell | null = null;
 
 const rosterOptions = rosters
@@ -61,13 +103,21 @@ app.innerHTML = `
         <span class="resolution-pill">${GAME_WIDTH} x ${GAME_HEIGHT}</span>
       </div>
       <div class="game-stage-grid">
-        <div
-          id="${config.parent}"
-          class="game-host phaser-host"
-          data-role="phaser-shell"
-          data-width="${String(config.width)}"
-          data-height="${String(config.height)}"
-        ></div>
+        <div class="play-surface-grid">
+          <div
+            id="${config.parent}"
+            class="game-host phaser-host"
+            data-role="phaser-shell"
+            data-width="${String(config.width)}"
+            data-height="${String(config.height)}"
+          ></div>
+          <aside
+            id="${postMatchResultsParent}"
+            class="post-match-panel"
+            aria-live="polite"
+            aria-label="Local match results and leaderboard"
+          ></aside>
+        </div>
         <div
           id="${battingPrototypeParent}"
           class="game-host prototype-host"
@@ -167,7 +217,17 @@ const remoteConsoleElement = getElement<HTMLElement>("#remote-console");
 const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
+const postMatchResultsElement = getElement<HTMLElement>(
+  `#${postMatchResultsParent}`
+);
 
+window.addEventListener(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, (event) => {
+  void handlePlaySceneProjection(
+    (event as CustomEvent<WallballPlaySceneProjectionEventDetail>).detail
+  ).catch(reportLocalResultsError);
+});
+
+void initializeLocalResultsPanel(localDataClient).catch(reportLocalResultsError);
 void mountPhaserGameShell()
   .then((mounted) => {
     phaserShell = mounted;
@@ -197,6 +257,7 @@ getElement<HTMLButtonElement>("#record-match").addEventListener("click", () => {
 });
 
 renderRemoteState();
+renderLocalResultsPanel();
 
 async function createRoom(): Promise<void> {
   const result = await remoteClient.createRoom({
@@ -305,6 +366,188 @@ async function recordMatch(): Promise<void> {
       inning: Math.max(1, Math.floor(index / 3) + 1)
     }))
   });
+}
+
+async function initializeLocalResultsPanel(
+  dataClient: WallballDataClient
+): Promise<void> {
+  const [players, highScores] = await Promise.all([
+    dataClient.listPlayers(),
+    dataClient.getHighScores("runs")
+  ]);
+
+  localResultsState.players = players.map(({ displayName, id }) => ({
+    displayName,
+    id
+  }));
+  localResultsState.highScores = highScores;
+  renderLocalResultsPanel();
+}
+
+async function handlePlaySceneProjection(
+  detail: WallballPlaySceneProjectionEventDetail
+): Promise<void> {
+  localResultsState.projection = detail.projection;
+
+  if (detail.projection.phase.kind !== "match-completed") {
+    localResultsState.activeCompletionKey = null;
+    localResultsState.errorMessage = null;
+    localResultsState.recordState = "idle";
+    localResultsState.recordingCompletionKey = null;
+    localResultsState.summary = null;
+    renderLocalResultsPanel();
+    return;
+  }
+
+  const completionKey = localCompletionKey(detail);
+
+  if (
+    localResultsState.activeCompletionKey === completionKey ||
+    localResultsState.recordingCompletionKey === completionKey
+  ) {
+    renderLocalResultsPanel();
+    return;
+  }
+
+  localResultsState.activeCompletionKey = completionKey;
+  localResultsState.errorMessage = null;
+  localResultsState.recordState = "recording";
+  localResultsState.recordingCompletionKey = completionKey;
+  localResultsState.summary = null;
+  renderLocalResultsPanel();
+
+  try {
+    const recorded = await recordLocalMatchCompletion(detail.loop, {
+      dataClient: localDataClient,
+      id: `local-${Date.now()}`,
+      playedAt: new Date().toISOString()
+    });
+
+    if (localResultsState.activeCompletionKey !== completionKey) {
+      return;
+    }
+
+    localResultsState.highScores = recorded.highScores;
+    localResultsState.recordState = "recorded";
+    localResultsState.summary = recorded.summary;
+  } catch (error) {
+    if (localResultsState.activeCompletionKey !== completionKey) {
+      return;
+    }
+
+    localResultsState.errorMessage =
+      error instanceof Error ? error.message : "Match result could not be saved.";
+    localResultsState.recordState = "failed";
+  } finally {
+    if (localResultsState.recordingCompletionKey === completionKey) {
+      localResultsState.recordingCompletionKey = null;
+    }
+
+    renderLocalResultsPanel();
+  }
+}
+
+function renderLocalResultsPanel(): void {
+  const projection = localResultsState.projection;
+
+  if (!projection) {
+    postMatchResultsElement.innerHTML = `
+      <div class="post-match-header">
+        <span class="post-match-status">Live</span>
+        <h2>Match Results</h2>
+      </div>
+      <p class="post-match-score">Waiting for first pitch</p>
+      <p class="post-match-winner">Local results will appear here.</p>
+    `;
+    return;
+  }
+
+  renderPostMatchPanelProjection(
+    projectPostMatchResultsPanel({
+      errorMessage: localResultsState.errorMessage,
+      highScores: localResultsState.highScores,
+      players: localResultsState.players,
+      projection,
+      recordState: localResultsState.recordState,
+      summary: localResultsState.summary
+    })
+  );
+}
+
+function renderPostMatchPanelProjection(
+  panel: PostMatchResultsPanelProjection
+): void {
+  postMatchResultsElement.innerHTML = `
+    <div class="post-match-header">
+      <span class="post-match-status">${escapeHtml(panel.statusLabel)}</span>
+      <h2>${escapeHtml(panel.title)}</h2>
+    </div>
+    <p class="post-match-score">${escapeHtml(panel.finalScore)}</p>
+    <p class="post-match-winner">${escapeHtml(panel.winnerLabel)}</p>
+    <dl class="post-match-meta">
+      <div>
+        <dt>Matchup</dt>
+        <dd>${escapeHtml(panel.matchupLabel)}</dd>
+      </div>
+    </dl>
+    <div class="post-match-section">
+      <h3>Summary</h3>
+      ${renderSummaryRows(panel.summaryRows)}
+    </div>
+    <div class="post-match-section">
+      <h3>Runs Leaderboard</h3>
+      ${renderLeaderboardRows(panel)}
+    </div>
+  `;
+}
+
+function renderSummaryRows(rows: string[]): string {
+  if (rows.length === 0) {
+    return `<p class="empty-row">Finish the match to record a summary.</p>`;
+  }
+
+  return `<ul class="post-match-list">${rows
+    .map((row) => `<li>${escapeHtml(row)}</li>`)
+    .join("")}</ul>`;
+}
+
+function renderLeaderboardRows(panel: PostMatchResultsPanelProjection): string {
+  if (panel.emptyLeaderboardText) {
+    return `<p class="empty-row">${escapeHtml(panel.emptyLeaderboardText)}</p>`;
+  }
+
+  return `<ol class="post-match-list leaderboard-list">${panel.leaderboardRows
+    .map(
+      (row) => `
+        <li>
+          <span class="leaderboard-rank">#${String(row.rank)}</span>
+          <span>${escapeHtml(row.label)}</span>
+          <strong>${escapeHtml(row.value)}</strong>
+        </li>
+      `
+    )
+    .join("")}</ol>`;
+}
+
+function reportLocalResultsError(error: unknown): void {
+  localResultsState.errorMessage =
+    error instanceof Error ? error.message : "Local results failed to update.";
+  localResultsState.recordState = "failed";
+  renderLocalResultsPanel();
+}
+
+function localCompletionKey({
+  loop
+}: WallballPlaySceneProjectionEventDetail): string {
+  const { events, match } = loop.flow;
+
+  return [
+    match.teams.away,
+    match.teams.home,
+    match.score.away,
+    match.score.home,
+    events.length
+  ].join(":");
 }
 
 function renderRemoteState(): void {

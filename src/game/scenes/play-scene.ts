@@ -14,8 +14,16 @@ import {
   type PlaySceneSetupProjection,
   type PlaySceneSetupSide
 } from "./play-scene-loop-adapter";
+import type { LocalMatchLoopState } from "../systems/local-match-loop";
 
 export const WALLBALL_PLAY_SCENE_KEY = "wallball-play";
+export const WALLBALL_PLAY_SCENE_PROJECTION_EVENT =
+  "wallball:play-scene-projection";
+
+export interface WallballPlaySceneProjectionEventDetail {
+  loop: LocalMatchLoopState;
+  projection: PlaySceneLoopProjection;
+}
 
 interface SceneObject {
   setOrigin?: (x: number, y?: number) => SceneObject;
@@ -56,6 +64,7 @@ interface PlaySceneContext {
     ) => SceneObject;
   };
   wallballPlay?: PlaySceneRuntime;
+  wallballProjectionTarget?: Pick<EventTarget, "dispatchEvent">;
 }
 
 interface PlaySceneRuntime {
@@ -63,6 +72,7 @@ interface PlaySceneRuntime {
   ball: SceneObject;
   fielders: PlaySceneFielderObjects[];
   hud: PlaySceneHudObjects;
+  lastProjectionEventKey: string;
   setup: PlaySceneSetupObjects;
 }
 
@@ -127,8 +137,10 @@ export function createWallballPlayScene(this: PlaySceneContext): void {
     ball: actors.ball,
     fielders: actors.fielders,
     hud,
+    lastProjectionEventKey: "",
     setup
   };
+  emitPlaySceneProjection(this, this.wallballPlay, projection);
 }
 
 export function updateWallballPlayScene(
@@ -143,7 +155,7 @@ export function updateWallballPlayScene(
   }
 
   runtime.adapter = advancePlaySceneLoopAdapter(runtime.adapter, timeMs);
-  renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
+  renderAndEmitProjection(this, runtime);
 }
 
 export function dispatchWallballPlaySceneControlIntent(
@@ -158,7 +170,7 @@ export function dispatchWallballPlaySceneControlIntent(
   }
 
   runtime.adapter = applyPlaySceneControlIntent(runtime.adapter, intent, timeMs);
-  renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
+  renderAndEmitProjection(this, runtime);
 }
 
 function drawBackdrop(this: PlaySceneContext): void {
@@ -424,6 +436,16 @@ function renderProjection(
   });
 }
 
+function renderAndEmitProjection(
+  context: PlaySceneContext,
+  runtime: PlaySceneRuntime
+): void {
+  const projection = projectPlaySceneLoopState(runtime.adapter);
+
+  renderProjection(runtime, projection);
+  emitPlaySceneProjection(context, runtime, projection);
+}
+
 function cycleSetupTeam(
   this: PlaySceneContext,
   side: PlaySceneSetupSide
@@ -447,7 +469,7 @@ function cycleSetupTeam(
     side,
     teamId: nextTeam.id
   });
-  renderSetup(runtime.setup, projectPlaySceneLoopState(runtime.adapter).setup);
+  renderAndEmitProjection(this, runtime);
 }
 
 function startSetupMatch(this: PlaySceneContext): void {
@@ -458,7 +480,62 @@ function startSetupMatch(this: PlaySceneContext): void {
   }
 
   runtime.adapter = startPlaySceneLoopAdapter(runtime.adapter, currentTimeMs());
-  renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
+  renderAndEmitProjection(this, runtime);
+}
+
+function emitPlaySceneProjection(
+  context: PlaySceneContext,
+  runtime: PlaySceneRuntime,
+  projection: PlaySceneLoopProjection
+): void {
+  const eventKey = projectionEventKey(projection);
+
+  if (runtime.lastProjectionEventKey === eventKey) {
+    return;
+  }
+
+  runtime.lastProjectionEventKey = eventKey;
+  const target =
+    context.wallballProjectionTarget ??
+    (typeof window === "undefined" ? null : window);
+
+  target?.dispatchEvent(
+    createProjectionEvent({
+      loop: runtime.adapter.loop,
+      projection
+    })
+  );
+}
+
+function projectionEventKey(projection: PlaySceneLoopProjection): string {
+  return [
+    projection.phase.kind,
+    projection.hud.awayScore,
+    projection.hud.homeScore,
+    projection.hud.batterName,
+    projection.hud.pitcherName,
+    projection.completion?.finalScore ?? "",
+    projection.completion?.winnerTeamId ?? ""
+  ].join("|");
+}
+
+function createProjectionEvent(
+  detail: WallballPlaySceneProjectionEventDetail
+): Event {
+  if (typeof CustomEvent === "function") {
+    return new CustomEvent(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, {
+      detail
+    });
+  }
+
+  const event = new Event(
+    WALLBALL_PLAY_SCENE_PROJECTION_EVENT
+  ) as CustomEvent<WallballPlaySceneProjectionEventDetail>;
+  Object.defineProperty(event, "detail", {
+    value: detail
+  });
+
+  return event;
 }
 
 function renderHud(
