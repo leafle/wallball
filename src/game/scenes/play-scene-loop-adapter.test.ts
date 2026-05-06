@@ -10,6 +10,104 @@ import {
 } from "./play-scene-loop-adapter";
 
 describe("play scene local loop adapter", () => {
+  it("assists solo play with a deterministic default pitch after the pitch delay", () => {
+    const initial = createPlaySceneLoopAdapter({
+      pitchDurationMs: 200,
+      soloAssist: {
+        enabled: true,
+        pitchDelayMs: 400
+      },
+      startedAtMs: 1_000
+    });
+
+    expect(
+      projectPlaySceneLoopState(advancePlaySceneLoopAdapter(initial, 1_399)).phase
+        .kind
+    ).toBe("ready-for-at-bat");
+
+    const pitched = advancePlaySceneLoopAdapter(initial, 1_400);
+
+    expect(projectPlaySceneLoopState(pitched).phase.kind).toBe("pitch-in-flight");
+    expect(pitched.loop.currentPitch).toMatchObject({
+      idealContactMs: 200,
+      pitchStartedAtMs: 1_400,
+      pitchX: 0,
+      targetX: 0
+    });
+
+    expect(
+      projectPlaySceneLoopState(
+        advancePlaySceneLoopAdapter(
+          createPlaySceneLoopAdapter({
+            soloAssist: false,
+            startedAtMs: 1_000
+          }),
+          2_000
+        )
+      ).phase.kind
+    ).toBe("ready-for-at-bat");
+  });
+
+  it("assists solo fielding by moving the nearest fielder into recovery range", () => {
+    const initial = createPlaySceneLoopAdapter({
+      fieldBounds: {
+        minX: 0,
+        maxX: 1_280,
+        minY: 0,
+        maxY: 720
+      },
+      fielders: [
+        {
+          id: "al",
+          position: {
+            x: 320,
+            y: 620
+          },
+          speed: 2_000
+        }
+      ],
+      maxRecoverySpeed: 10_000,
+      recoveryDelayMs: 100,
+      recoveryRadius: 16,
+      soloAssist: {
+        enabled: true,
+        fieldingRecovery: true,
+        pitchDelayMs: 400
+      },
+      startedAtMs: 1_000
+    });
+    const pitched = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    const swung = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_300
+    );
+
+    const recovered = advancePlaySceneLoopAdapter(swung, 1_600);
+
+    expect(projectPlaySceneLoopState(recovered).phase.kind).toBe(
+      "ready-for-at-bat"
+    );
+    expect(recovered.loop.lastPlay?.recovery).toMatchObject({
+      kind: "recovered",
+      fielderId: "al"
+    });
+    expect(recovered.loop.fielders[0]?.position).not.toEqual({
+      x: 320,
+      y: 620
+    });
+  });
+
   it("projects a manually controlled pitch, swing, and recovery cycle for Phaser rendering", () => {
     const initial = createPlaySceneLoopAdapter({ startedAtMs: 1_000 });
     const initialProjection = projectPlaySceneLoopState(initial);

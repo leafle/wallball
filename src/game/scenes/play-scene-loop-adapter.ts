@@ -35,6 +35,7 @@ export interface PlaySceneLoopAdapter {
   recoveryDelayMs: number;
   scoreLimit: number;
   setup: PlaySceneMatchSetupState;
+  soloAssist: PlaySceneSoloAssistSettings;
 }
 
 export interface CreatePlaySceneLoopAdapterInput {
@@ -43,11 +44,24 @@ export interface CreatePlaySceneLoopAdapterInput {
   fieldBounds?: FieldBounds;
   fielders?: readonly Fielder[];
   homeTeamId?: string;
+  maxRecoverySpeed?: number;
   nextPitchDelayMs?: number;
   pitchDurationMs?: number;
   recoveryDelayMs?: number;
+  recoveryRadius?: number;
   scoreLimit?: number;
+  soloAssist?: PlaySceneSoloAssistInput;
   startedAtMs?: number;
+}
+
+export type PlaySceneSoloAssistInput =
+  | boolean
+  | Partial<PlaySceneSoloAssistSettings>;
+
+export interface PlaySceneSoloAssistSettings {
+  enabled: boolean;
+  fieldingRecovery: boolean;
+  pitchDelayMs: number;
 }
 
 export interface PlaySceneLoopProjection {
@@ -117,11 +131,18 @@ const DEFAULT_NEXT_PITCH_DELAY_MS = 640;
 const DEFAULT_PITCH_DURATION_MS = 180;
 const DEFAULT_RECOVERY_DELAY_MS = 300;
 const DEFAULT_SCORE_LIMIT = 3;
+const DEFAULT_MAX_RECOVERY_SPEED = 1_000;
+const DEFAULT_RECOVERY_RADIUS = 600;
 const DEFAULT_FIELD_BOUNDS: FieldBounds = {
   minX: 320,
   maxX: 960,
   minY: 210,
   maxY: 620
+};
+const DEFAULT_SOLO_ASSIST: PlaySceneSoloAssistSettings = {
+  enabled: true,
+  fieldingRecovery: true,
+  pitchDelayMs: DEFAULT_NEXT_PITCH_DELAY_MS
 };
 const EMPTY_FIELDING_INPUT: FieldingInput = {
   axisX: 0,
@@ -158,10 +179,13 @@ export function createPlaySceneLoopAdapter({
   fieldBounds = DEFAULT_FIELD_BOUNDS,
   fielders,
   homeTeamId = DEFAULT_HOME_TEAM_ID,
+  maxRecoverySpeed = DEFAULT_MAX_RECOVERY_SPEED,
   nextPitchDelayMs = DEFAULT_NEXT_PITCH_DELAY_MS,
   pitchDurationMs = DEFAULT_PITCH_DURATION_MS,
   recoveryDelayMs = DEFAULT_RECOVERY_DELAY_MS,
+  recoveryRadius = DEFAULT_RECOVERY_RADIUS,
   scoreLimit = DEFAULT_SCORE_LIMIT,
+  soloAssist = DEFAULT_SOLO_ASSIST,
   startedAtMs = 0
 }: CreatePlaySceneLoopAdapterInput = {}): PlaySceneLoopAdapter {
   const rosters = loadPredefinedRosters();
@@ -173,6 +197,7 @@ export function createPlaySceneLoopAdapter({
   const awayRoster = findRoster(rosters, setup.awayTeamId);
   const homeRoster = findRoster(rosters, setup.homeTeamId);
   const matchFielders = fielders ?? createDefaultFielders(homeRoster);
+  const soloAssistSettings = normalizeSoloAssist(soloAssist);
 
   return {
     awayRoster,
@@ -185,16 +210,19 @@ export function createPlaySceneLoopAdapter({
       awayRoster,
       homeRoster,
       fielders: matchFielders,
-      maxRecoverySpeed: 1_000,
-      recoveryRadius: 600,
+      maxRecoverySpeed,
+      recoveryRadius,
       scoreLimit
     }),
-    nextActionAtMs: startedAtMs,
+    nextActionAtMs: soloAssistSettings.enabled
+      ? startedAtMs + soloAssistSettings.pitchDelayMs
+      : startedAtMs,
     nextPitchDelayMs,
     pitchDurationMs,
     recoveryDelayMs,
     scoreLimit,
-    setup
+    setup,
+    soloAssist: soloAssistSettings
   };
 }
 
@@ -225,6 +253,7 @@ export function startPlaySceneLoopAdapter(
     pitchDurationMs: adapter.pitchDurationMs,
     recoveryDelayMs: adapter.recoveryDelayMs,
     scoreLimit: adapter.scoreLimit,
+    soloAssist: adapter.soloAssist,
     startedAtMs
   });
 }
@@ -237,7 +266,9 @@ export function advancePlaySceneLoopAdapter(
     return adapter;
   }
 
-  const movedAdapter = moveControlledFielder(adapter, timeMs);
+  const elapsedMs = Math.max(0, timeMs - adapter.lastAdvancedAtMs);
+  let movedAdapter = moveControlledFielder(adapter, timeMs);
+  movedAdapter = applySoloPitchAssist(movedAdapter, timeMs);
 
   if (
     movedAdapter.loop.phase.kind !== "awaiting-recovery" ||
@@ -246,17 +277,18 @@ export function advancePlaySceneLoopAdapter(
     return movedAdapter;
   }
 
-  const recoveredLoop = advanceLocalMatchLoop(movedAdapter.loop, {
+  const fieldedAdapter = moveAssistedFielderTowardBall(movedAdapter, elapsedMs);
+  const recoveredLoop = advanceLocalMatchLoop(fieldedAdapter.loop, {
     type: "recover-ball"
   });
 
   return {
-    ...movedAdapter,
+    ...fieldedAdapter,
     loop: recoveredLoop,
     nextActionAtMs:
       recoveredLoop.phase.kind === "awaiting-recovery"
-        ? timeMs + movedAdapter.recoveryDelayMs
-        : timeMs + movedAdapter.nextPitchDelayMs
+        ? timeMs + fieldedAdapter.recoveryDelayMs
+        : timeMs + fieldedAdapter.nextPitchDelayMs
   };
 }
 
@@ -458,6 +490,96 @@ function isIdleFieldingInput(input: FieldingInput): boolean {
   return input.axisX === 0 && input.axisY === 0;
 }
 
+function applySoloPitchAssist(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  if (
+    !adapter.soloAssist.enabled ||
+    adapter.loop.phase.kind !== "ready-for-at-bat" ||
+    timeMs < adapter.nextActionAtMs
+  ) {
+    return adapter;
+  }
+
+  return applyPitchControl(adapter, timeMs);
+}
+
+function moveAssistedFielderTowardBall(
+  adapter: PlaySceneLoopAdapter,
+  elapsedMs: number
+): PlaySceneLoopAdapter {
+  if (
+    !adapter.soloAssist.enabled ||
+    !adapter.soloAssist.fieldingRecovery ||
+    adapter.loop.phase.kind !== "awaiting-recovery" ||
+    !adapter.loop.lastPlay ||
+    !isIdleFieldingInput(adapter.fieldingInput) ||
+    elapsedMs <= 0
+  ) {
+    return adapter;
+  }
+
+  const nearest = findNearestFielder(
+    adapter.loop.fielders,
+    adapter.loop.ball.position
+  );
+
+  if (
+    !nearest ||
+    nearest.distance <= adapter.loop.settings.recoveryRadius ||
+    nearest.fielder.speed <= 0
+  ) {
+    return adapter;
+  }
+
+  const travelMs = Math.min(
+    elapsedMs,
+    (nearest.distance / nearest.fielder.speed) * 1_000
+  );
+
+  if (travelMs <= 0) {
+    return adapter;
+  }
+
+  return {
+    ...adapter,
+    loop: advanceLocalMatchLoop(adapter.loop, {
+      type: "move-fielder",
+      fielderId: nearest.fielder.id,
+      input: {
+        axisX: (adapter.loop.ball.position.x - nearest.fielder.position.x) /
+          nearest.distance,
+        axisY: (adapter.loop.ball.position.y - nearest.fielder.position.y) /
+          nearest.distance
+      },
+      elapsedMs: travelMs,
+      bounds: adapter.fieldBounds
+    })
+  };
+}
+
+function findNearestFielder(
+  fielders: readonly Fielder[],
+  position: Vector2
+): { distance: number; fielder: Fielder } | null {
+  return fielders.reduce<{ distance: number; fielder: Fielder } | null>(
+    (nearest, fielder) => {
+      const distance = vectorDistance(fielder.position, position);
+
+      if (!nearest || distance < nearest.distance) {
+        return {
+          distance,
+          fielder
+        };
+      }
+
+      return nearest;
+    },
+    null
+  );
+}
+
 function getProjectedBatterId(adapter: PlaySceneLoopAdapter): string {
   if (adapter.loop.phase.kind !== "match-completed") {
     return adapter.loop.phase.batterId;
@@ -581,4 +703,26 @@ function cloneFieldBounds(bounds: FieldBounds): FieldBounds {
     minY: bounds.minY,
     maxY: bounds.maxY
   };
+}
+
+function normalizeSoloAssist(
+  input: PlaySceneSoloAssistInput
+): PlaySceneSoloAssistSettings {
+  if (typeof input === "boolean") {
+    return {
+      ...DEFAULT_SOLO_ASSIST,
+      enabled: input
+    };
+  }
+
+  return {
+    enabled: input.enabled ?? DEFAULT_SOLO_ASSIST.enabled,
+    fieldingRecovery:
+      input.fieldingRecovery ?? DEFAULT_SOLO_ASSIST.fieldingRecovery,
+    pitchDelayMs: Math.max(0, input.pitchDelayMs ?? DEFAULT_SOLO_ASSIST.pitchDelayMs)
+  };
+}
+
+function vectorDistance(left: Vector2, right: Vector2): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
 }
