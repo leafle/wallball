@@ -6,6 +6,7 @@ import type {
   MatchSummary
 } from "../domain/match-summary";
 import { generateMatchSummary } from "../domain/match-summary";
+import type { BattingOrder } from "../domain/rosters";
 import type { BattingSide, MatchState } from "../domain/rules";
 import { applyOut, createMatchState } from "../domain/rules";
 import type { BallResultKind } from "./ball-results";
@@ -14,10 +15,7 @@ import { EMPTY_BASES, applyScoringResult } from "./scoring";
 
 export type PlateAppearanceResult = BallResultKind | "triple";
 
-export interface MatchFlowBattingOrder {
-  away: RunnerId[];
-  home: RunnerId[];
-}
+export type MatchFlowBattingOrder = BattingOrder;
 
 export interface MatchFlowState {
   match: MatchState;

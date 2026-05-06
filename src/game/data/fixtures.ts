@@ -1,17 +1,9 @@
 import type { InteractionPrompt } from "../domain/friend-interactions";
+import type { PlayerProfile, TeamRoster } from "../domain/rosters";
 
-export interface PlayerFixture {
-  id: string;
-  displayName: string;
-  battingOrder: number;
-  tags: string[];
-}
+export type PlayerFixture = PlayerProfile;
 
-export interface TeamFixture {
-  id: string;
-  displayName: string;
-  players: PlayerFixture[];
-}
+export type TeamFixture = TeamRoster;
 
 const predefinedRosters: TeamFixture[] = [
   {
