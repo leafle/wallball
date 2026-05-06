@@ -5,6 +5,7 @@
 .beads-credential-key
 
 # Gas Town runtime files
+.gastown/sandboxes/
 .runtime/
 .land-worktree/
 polecats/
