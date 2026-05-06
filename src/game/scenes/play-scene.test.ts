@@ -176,6 +176,38 @@ describe("createWallballPlayScene", () => {
     });
   });
 
+  it("renders friend matchup callouts below essential score and batter text", () => {
+    const calls: DrawCall[] = [];
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene);
+    scorePlateAppearance(scene, 1_000);
+    scorePlateAppearance(scene, 2_000);
+
+    const callout = calls.find(
+      (call) =>
+        call.kind === "text" &&
+        call.text === "Brandon digs in while Danny works fast."
+    );
+
+    expect(callout).toEqual(
+      expect.objectContaining({
+        kind: "text",
+        text: "Brandon digs in while Danny works fast.",
+        x: 52,
+        y: 122
+      })
+    );
+    expect(callout?.y).toBeGreaterThan(
+      Math.max(
+        yForText(calls, "Champions 2"),
+        yForText(calls, "Woodland 0"),
+        yForText(calls, "Batter Brandon"),
+        yForText(calls, "Danny vs Brandon")
+      )
+    );
+  });
+
   it("draws local setup controls and restarts with selected teams", () => {
     const calls: DrawCall[] = [];
     const scene = createFakeSceneContext(calls);
@@ -221,8 +253,8 @@ function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
 
         return sceneObject;
       },
-      text: (_x, _y, text) => {
-        const call: DrawCall = { kind: "text", text };
+      text: (x, y, text) => {
+        const call: DrawCall = { kind: "text", text, x, y };
         const textObject: FakeSceneObject = {
           ...sceneObject,
           on: (event, callback) => {
@@ -256,4 +288,36 @@ function triggerText(calls: DrawCall[], text: string): void {
   }
 
   call.onPointerDown();
+}
+
+function scorePlateAppearance(scene: FakeSceneContext, pitchStartedAtMs: number): void {
+  dispatchWallballPlaySceneControlIntent.call(
+    scene,
+    {
+      kind: "pitch",
+      source: "keyboard"
+    },
+    pitchStartedAtMs
+  );
+  dispatchWallballPlaySceneControlIntent.call(
+    scene,
+    {
+      kind: "swing",
+      source: "keyboard"
+    },
+    pitchStartedAtMs + 180
+  );
+  updateWallballPlayScene.call(scene, pitchStartedAtMs + 500, 0);
+}
+
+function yForText(calls: DrawCall[], text: string): number {
+  const call = calls.find(
+    (candidate) => candidate.kind === "text" && candidate.text === text
+  );
+
+  if (typeof call?.y !== "number") {
+    throw new Error(`Missing y position for ${text}`);
+  }
+
+  return call.y;
 }

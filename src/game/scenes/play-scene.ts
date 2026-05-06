@@ -89,6 +89,7 @@ interface PlaySceneFielderObjects {
 interface PlaySceneHudObjects {
   awayScore: SceneObject;
   batter: SceneObject;
+  callout: SceneObject;
   homeScore: SceneObject;
   inning: SceneObject;
   matchup: SceneObject;
@@ -320,6 +321,11 @@ function drawHud(
     COLORS.fielder,
     0.42
   );
+  this.add.rectangle(324, 140, 548, 42, COLORS.hud, 0.6).setStrokeStyle?.(
+    2,
+    COLORS.hudAccent,
+    0.28
+  );
 
   return {
     awayScore: addHudText.call(
@@ -329,6 +335,7 @@ function drawHud(
       `${state.awayTeamName} ${state.awayScore}`
     ),
     batter: addHudText.call(this, 584, 40, `Batter ${state.batterName}`),
+    callout: addCalloutText.call(this, 52, 122, state.calloutText ?? ""),
     homeScore: addHudText.call(
       this,
       314,
@@ -411,6 +418,20 @@ function addSetupText(
     color: "#fffaf0",
     fontFamily: "Inter, Arial, sans-serif",
     fontSize: "20px",
+    fontStyle: "bold"
+  });
+}
+
+function addCalloutText(
+  this: PlaySceneContext,
+  x: number,
+  y: number,
+  text: string
+): SceneObject {
+  return this.add.text(x, y, text, {
+    color: "#fffaf0",
+    fontFamily: "Inter, Arial, sans-serif",
+    fontSize: "18px",
     fontStyle: "bold"
   });
 }
@@ -548,6 +569,7 @@ function renderHud(
   hud.homeScore.setText?.(`${state.homeTeamName} ${state.homeScore}`);
   hud.batter.setText?.(`Batter ${state.batterName}`);
   hud.matchup.setText?.(`${state.pitcherName} vs ${state.batterName}`);
+  hud.callout.setText?.(state.calloutText ?? "");
 }
 
 function renderSetup(

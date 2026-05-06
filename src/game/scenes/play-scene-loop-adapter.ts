@@ -1,4 +1,8 @@
-import { loadPredefinedRosters } from "../data/fixtures";
+import { loadInteractionPrompts, loadPredefinedRosters } from "../data/fixtures";
+import {
+  getInteractionContext,
+  type InteractionCallout
+} from "../domain/friend-interactions";
 import type { PlayerProfile, TeamRoster } from "../domain/rosters";
 import type { HalfInning } from "../domain/rules";
 import type {
@@ -66,6 +70,7 @@ export interface PlaySceneSoloAssistSettings {
 
 export interface PlaySceneLoopProjection {
   ball: BallPhysicsSnapshot;
+  callout: InteractionCallout | null;
   completion: PlaySceneCompletionProjection | null;
   fielders: PlaySceneFielderProjection[];
   hud: PlaySceneHudProjection;
@@ -110,13 +115,14 @@ export interface PlaySceneHudProjection {
   awayScore: number;
   awayTeamName: string;
   batterName: string;
+  calloutText: string | null;
+  completionText: string | null;
   half: HalfInning;
   homeScore: number;
   homeTeamName: string;
   inning: number;
   outs: number;
   pitcherName: string;
-  completionText: string | null;
 }
 
 export interface PlaySceneFielderProjection {
@@ -330,12 +336,14 @@ export function projectPlaySceneLoopState(
   const fieldingRoster = getFieldingRoster(adapter);
   const pitcher = getPitcher(fieldingRoster);
   const completion = projectCompletion(adapter);
+  const callout = projectInteractionCallout(batterId, pitcher.id);
 
   return {
     ball: {
       position: cloneVector(adapter.loop.ball.position),
       velocity: cloneVector(adapter.loop.ball.velocity)
     },
+    callout,
     completion,
     fielders: adapter.loop.fielders.map((fielder) => ({
       displayName: getPlayerName(adapter, fielder.id),
@@ -346,13 +354,14 @@ export function projectPlaySceneLoopState(
       awayScore: flow.match.score.away,
       awayTeamName: adapter.awayRoster.displayName,
       batterName: getPlayerName(adapter, batterId),
+      calloutText: callout?.message ?? null,
+      completionText: completion ? `Final: ${completion.finalScore}` : null,
       half: flow.match.inning.half,
       homeScore: flow.match.score.home,
       homeTeamName: adapter.homeRoster.displayName,
       inning: flow.match.inning.inning,
       outs: flow.match.inning.outs,
-      pitcherName: pitcher.displayName,
-      completionText: completion ? `Final: ${completion.finalScore}` : null
+      pitcherName: pitcher.displayName
     },
     lastResult: adapter.loop.lastPlay?.ballResult.kind ?? null,
     phase: {
@@ -365,6 +374,21 @@ export function projectPlaySceneLoopState(
       width: adapter.loop.settings.wallTarget.width
     }
   };
+}
+
+function projectInteractionCallout(
+  batterId: string,
+  pitcherId: string
+): InteractionCallout | null {
+  const context = getInteractionContext({
+    matchup: {
+      batterId,
+      pitcherId
+    },
+    prompts: loadInteractionPrompts()
+  });
+
+  return context.callouts[0] ?? null;
 }
 
 function createPlaySceneMatchSetupState({

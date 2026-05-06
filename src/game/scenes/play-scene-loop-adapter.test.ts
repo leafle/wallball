@@ -304,6 +304,26 @@ describe("play scene local loop adapter", () => {
     ).toBe("match-completed");
   });
 
+  it("projects deterministic friend matchup callouts from player and pitcher IDs", () => {
+    const initial = createPlaySceneLoopAdapter({ startedAtMs: 1_000 });
+    const afterCainer = scorePlateAppearance(initial, 1_000);
+    const afterMinkus = scorePlateAppearance(afterCainer, 2_000);
+    const projection = projectPlaySceneLoopState(afterMinkus);
+
+    expect(projection.hud).toMatchObject({
+      batterName: "Brandon",
+      pitcherName: "Danny",
+      calloutText: "Brandon digs in while Danny works fast."
+    });
+    expect(projection.callout).toEqual({
+      id: "brandon-vs-danny",
+      message: "Brandon digs in while Danny works fast.",
+      playerIds: ["brandon", "danny"],
+      tags: ["matchup", "pace"],
+      trigger: "player-matchup"
+    });
+  });
+
   it("selects predefined teams and starts a fresh deterministic loop", () => {
     const initial = createPlaySceneLoopAdapter({ startedAtMs: 1_000 });
     const withAway = selectPlaySceneLoopTeam(initial, {
@@ -391,3 +411,27 @@ describe("play scene local loop adapter", () => {
     });
   });
 });
+
+function scorePlateAppearance(
+  adapter: ReturnType<typeof createPlaySceneLoopAdapter>,
+  pitchStartedAtMs: number
+): ReturnType<typeof createPlaySceneLoopAdapter> {
+  const pitched = applyPlaySceneControlIntent(
+    adapter,
+    {
+      kind: "pitch",
+      source: "keyboard"
+    },
+    pitchStartedAtMs
+  );
+  const swung = applyPlaySceneControlIntent(
+    pitched,
+    {
+      kind: "swing",
+      source: "keyboard"
+    },
+    pitchStartedAtMs + 180
+  );
+
+  return advancePlaySceneLoopAdapter(swung, pitchStartedAtMs + 500);
+}

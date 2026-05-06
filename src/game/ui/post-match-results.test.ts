@@ -105,6 +105,7 @@ const completedProjection: PlaySceneLoopProjection = {
       y: 0
     }
   },
+  callout: null,
   completion: {
     finalScore: "Champions 2, Woodland 1",
     loserTeamId: "woodland",
@@ -117,6 +118,7 @@ const completedProjection: PlaySceneLoopProjection = {
     awayScore: 2,
     awayTeamName: "Champions",
     batterName: "Cainer",
+    calloutText: null,
     completionText: "Final: Champions 2, Woodland 1",
     half: "top",
     homeScore: 1,
