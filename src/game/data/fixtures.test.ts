@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { loadPredefinedRosters } from "./fixtures";
+import { loadInteractionPrompts, loadPredefinedRosters } from "./fixtures";
 
 describe("predefined roster loading", () => {
   it("loads the four v0 teams with stable team ids", () => {
@@ -41,5 +41,25 @@ describe("predefined roster loading", () => {
         }
       ]
     });
+  });
+
+  it("loads the first data-driven friend interaction prompts", () => {
+    expect(loadInteractionPrompts()).toEqual([
+      {
+        id: "brandon-vs-danny",
+        trigger: "player-matchup",
+        batterId: "brandon",
+        pitcherId: "danny",
+        message: "Brandon digs in while Danny works fast.",
+        tags: ["matchup", "pace"]
+      },
+      {
+        id: "cainer-vs-al-history",
+        trigger: "match-history",
+        playerIds: ["cainer", "al"],
+        message: "Cainer and Al have history here: {finalScore} in {matchId}.",
+        tags: ["history", "rivalry"]
+      }
+    ]);
   });
 });

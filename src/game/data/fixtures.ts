@@ -1,3 +1,5 @@
+import type { InteractionPrompt } from "../domain/friend-interactions";
+
 export interface PlayerFixture {
   id: string;
   displayName: string;
@@ -50,11 +52,33 @@ const predefinedRosters: TeamFixture[] = [
   }
 ];
 
+const interactionPrompts: InteractionPrompt[] = [
+  {
+    id: "brandon-vs-danny",
+    trigger: "player-matchup",
+    batterId: "brandon",
+    pitcherId: "danny",
+    message: "Brandon digs in while Danny works fast.",
+    tags: ["matchup", "pace"]
+  },
+  {
+    id: "cainer-vs-al-history",
+    trigger: "match-history",
+    playerIds: ["cainer", "al"],
+    message: "Cainer and Al have history here: {finalScore} in {matchId}.",
+    tags: ["history", "rivalry"]
+  }
+];
+
 export function loadPredefinedRosters(): TeamFixture[] {
   return predefinedRosters.map((team) => ({
     ...team,
     players: team.players.map((rosterPlayer) => ({ ...rosterPlayer }))
   }));
+}
+
+export function loadInteractionPrompts(): InteractionPrompt[] {
+  return interactionPrompts.map((prompt) => ({ ...prompt }));
 }
 
 function player(
