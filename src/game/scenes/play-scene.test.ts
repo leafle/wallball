@@ -9,6 +9,7 @@ import {
 interface DrawCall {
   kind: "circle" | "rectangle" | "text";
   height?: number;
+  onPointerDown?: () => void;
   radius?: number;
   text?: string;
   width?: number;
@@ -17,7 +18,9 @@ interface DrawCall {
 }
 
 interface FakeSceneObject {
+  on: (event: string, callback: () => void) => FakeSceneObject;
   setPosition: (x: number, y: number) => FakeSceneObject;
+  setInteractive: () => FakeSceneObject;
   setOrigin: () => FakeSceneObject;
   setRotation: () => FakeSceneObject;
   setStrokeStyle: () => FakeSceneObject;
@@ -119,11 +122,34 @@ describe("createWallballPlayScene", () => {
       ])
     );
   });
+
+  it("draws local setup controls and restarts with selected teams", () => {
+    const calls: DrawCall[] = [];
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene);
+    triggerText(calls, "Away Champions");
+    triggerText(calls, "Home Woodland");
+    triggerText(calls, "Start / Restart");
+
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "text", text: "Away Woodland" }),
+        expect.objectContaining({ kind: "text", text: "Home Team Cainer" }),
+        expect.objectContaining({ kind: "text", text: "Woodland 0" }),
+        expect.objectContaining({ kind: "text", text: "Team Cainer 0" }),
+        expect.objectContaining({ kind: "text", text: "Batter Al" }),
+        expect.objectContaining({ kind: "text", text: "JSack vs Al" })
+      ])
+    );
+  });
 });
 
 function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
   const sceneObject: FakeSceneObject = {
+    on: () => sceneObject,
     setPosition: () => sceneObject,
+    setInteractive: () => sceneObject,
     setOrigin: () => sceneObject,
     setRotation: () => sceneObject,
     setStrokeStyle: () => sceneObject,
@@ -146,6 +172,14 @@ function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
         const call: DrawCall = { kind: "text", text };
         const textObject: FakeSceneObject = {
           ...sceneObject,
+          on: (event, callback) => {
+            if (event === "pointerdown") {
+              call.onPointerDown = callback;
+            }
+
+            return textObject;
+          },
+          setInteractive: () => textObject,
           setText: (nextText) => {
             call.text = nextText;
 
@@ -159,4 +193,14 @@ function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
       }
     }
   };
+}
+
+function triggerText(calls: DrawCall[], text: string): void {
+  const call = calls.find((candidate) => candidate.text === text);
+
+  if (!call?.onPointerDown) {
+    throw new Error(`Missing pointer handler for ${text}`);
+  }
+
+  call.onPointerDown();
 }

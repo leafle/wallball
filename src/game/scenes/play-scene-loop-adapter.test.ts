@@ -4,7 +4,9 @@ import {
   advancePlaySceneLoopAdapter,
   applyPlaySceneControlIntent,
   createPlaySceneLoopAdapter,
-  projectPlaySceneLoopState
+  projectPlaySceneLoopState,
+  selectPlaySceneLoopTeam,
+  startPlaySceneLoopAdapter
 } from "./play-scene-loop-adapter";
 
 describe("play scene local loop adapter", () => {
@@ -202,5 +204,92 @@ describe("play scene local loop adapter", () => {
         )
       ).phase.kind
     ).toBe("match-completed");
+  });
+
+  it("selects predefined teams and starts a fresh deterministic loop", () => {
+    const initial = createPlaySceneLoopAdapter({ startedAtMs: 1_000 });
+    const withAway = selectPlaySceneLoopTeam(initial, {
+      side: "away",
+      teamId: "team-cainer"
+    });
+    const selected = selectPlaySceneLoopTeam(withAway, {
+      side: "home",
+      teamId: "ej"
+    });
+
+    expect(projectPlaySceneLoopState(selected).setup).toEqual({
+      awayTeamId: "team-cainer",
+      awayTeamName: "Team Cainer",
+      homeTeamId: "ej",
+      homeTeamName: "EJ",
+      teams: [
+        { id: "champions", displayName: "Champions" },
+        { id: "woodland", displayName: "Woodland" },
+        { id: "team-cainer", displayName: "Team Cainer" },
+        { id: "ej", displayName: "EJ" }
+      ]
+    });
+
+    const started = startPlaySceneLoopAdapter(selected, 2_000);
+
+    expect(started.awayRoster.id).toBe("team-cainer");
+    expect(started.homeRoster.id).toBe("ej");
+    expect(projectPlaySceneLoopState(started).hud).toMatchObject({
+      awayScore: 0,
+      awayTeamName: "Team Cainer",
+      batterName: "Rich",
+      homeScore: 0,
+      homeTeamName: "EJ",
+      pitcherName: "Nick"
+    });
+    expect(projectPlaySceneLoopState(started).fielders[0]).toMatchObject({
+      id: "bobby",
+      displayName: "Bobby"
+    });
+  });
+
+  it("restarting preserves selected teams while clearing score, outs, and batter order", () => {
+    const selected = selectPlaySceneLoopTeam(
+      selectPlaySceneLoopTeam(createPlaySceneLoopAdapter({ startedAtMs: 1_000 }), {
+        side: "away",
+        teamId: "team-cainer"
+      }),
+      {
+        side: "home",
+        teamId: "ej"
+      }
+    );
+    const started = startPlaySceneLoopAdapter(selected, 1_000);
+    const pitched = applyPlaySceneControlIntent(
+      started,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    const swung = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+    const scored = advancePlaySceneLoopAdapter(swung, 1_500);
+
+    expect(projectPlaySceneLoopState(scored).hud.awayScore).toBe(1);
+
+    const restarted = startPlaySceneLoopAdapter(scored, 5_000);
+
+    expect(projectPlaySceneLoopState(restarted).hud).toMatchObject({
+      awayScore: 0,
+      awayTeamName: "Team Cainer",
+      batterName: "Rich",
+      homeScore: 0,
+      homeTeamName: "EJ",
+      inning: 1,
+      outs: 0
+    });
   });
 });

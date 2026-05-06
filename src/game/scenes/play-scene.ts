@@ -5,16 +5,21 @@ import {
   applyPlaySceneControlIntent,
   createPlaySceneLoopAdapter,
   projectPlaySceneLoopState,
+  selectPlaySceneLoopTeam,
+  startPlaySceneLoopAdapter,
   type PlaySceneFielderProjection,
   type PlaySceneHudProjection,
   type PlaySceneLoopAdapter,
-  type PlaySceneLoopProjection
+  type PlaySceneLoopProjection,
+  type PlaySceneSetupProjection,
+  type PlaySceneSetupSide
 } from "./play-scene-loop-adapter";
 
 export const WALLBALL_PLAY_SCENE_KEY = "wallball-play";
 
 interface SceneObject {
   setOrigin?: (x: number, y?: number) => SceneObject;
+  setInteractive?: () => SceneObject;
   setPosition?: (x: number, y: number) => SceneObject;
   setRotation?: (radians: number) => SceneObject;
   setStrokeStyle?: (
@@ -23,6 +28,7 @@ interface SceneObject {
     alpha?: number
   ) => SceneObject;
   setText?: (text: string) => SceneObject;
+  on?: (event: string, callback: () => void) => SceneObject;
 }
 
 interface PlaySceneContext {
@@ -57,6 +63,7 @@ interface PlaySceneRuntime {
   ball: SceneObject;
   fielders: PlaySceneFielderObjects[];
   hud: PlaySceneHudObjects;
+  setup: PlaySceneSetupObjects;
 }
 
 interface PlaySceneActors {
@@ -76,6 +83,12 @@ interface PlaySceneHudObjects {
   inning: SceneObject;
   matchup: SceneObject;
   outs: SceneObject;
+}
+
+interface PlaySceneSetupObjects {
+  awayTeam: SceneObject;
+  homeTeam: SceneObject;
+  start: SceneObject;
 }
 
 const COLORS = {
@@ -107,12 +120,14 @@ export function createWallballPlayScene(this: PlaySceneContext): void {
   drawCourt.call(this);
   const actors = drawActors.call(this, projection);
   const hud = drawHud.call(this, projection.hud);
+  const setup = drawSetupControls.call(this, projection.setup);
 
   this.wallballPlay = {
     adapter,
     ball: actors.ball,
     fielders: actors.fielders,
-    hud
+    hud,
+    setup
   };
 }
 
@@ -319,6 +334,47 @@ function drawHud(
   };
 }
 
+function drawSetupControls(
+  this: PlaySceneContext,
+  setup: PlaySceneSetupProjection
+): PlaySceneSetupObjects {
+  this.add.rectangle(1_030, 72, 340, 96, COLORS.hud, 0.72).setStrokeStyle?.(
+    2,
+    COLORS.hudAccent,
+    0.46
+  );
+
+  const awayTeam = addSetupText.call(
+    this,
+    884,
+    32,
+    `Away ${setup.awayTeamName}`
+  );
+  const homeTeam = addSetupText.call(
+    this,
+    884,
+    68,
+    `Home ${setup.homeTeamName}`
+  );
+  const start = addSetupText.call(this, 1_114, 50, "Start / Restart");
+
+  bindSetupControl(awayTeam, () => {
+    cycleSetupTeam.call(this, "away");
+  });
+  bindSetupControl(homeTeam, () => {
+    cycleSetupTeam.call(this, "home");
+  });
+  bindSetupControl(start, () => {
+    startSetupMatch.call(this);
+  });
+
+  return {
+    awayTeam,
+    homeTeam,
+    start
+  };
+}
+
 function addHudText(
   this: PlaySceneContext,
   x: number,
@@ -333,11 +389,31 @@ function addHudText(
   });
 }
 
+function addSetupText(
+  this: PlaySceneContext,
+  x: number,
+  y: number,
+  text: string
+): SceneObject {
+  return this.add.text(x, y, text, {
+    color: "#fffaf0",
+    fontFamily: "Inter, Arial, sans-serif",
+    fontSize: "20px",
+    fontStyle: "bold"
+  });
+}
+
+function bindSetupControl(object: SceneObject, callback: () => void): void {
+  object.setInteractive?.();
+  object.on?.("pointerdown", callback);
+}
+
 function renderProjection(
   runtime: PlaySceneRuntime,
   projection: PlaySceneLoopProjection
 ): void {
   renderHud(runtime.hud, projection.hud);
+  renderSetup(runtime.setup, projection.setup);
   runtime.ball.setPosition?.(
     projection.ball.position.x,
     projection.ball.position.y
@@ -346,6 +422,43 @@ function renderProjection(
   projection.fielders.forEach((fielder, index) => {
     renderFielder(runtime.fielders[index], fielder);
   });
+}
+
+function cycleSetupTeam(
+  this: PlaySceneContext,
+  side: PlaySceneSetupSide
+): void {
+  const runtime = this.wallballPlay;
+
+  if (!runtime) {
+    return;
+  }
+
+  const setup = projectPlaySceneLoopState(runtime.adapter).setup;
+  const currentTeamId = side === "away" ? setup.awayTeamId : setup.homeTeamId;
+  const currentIndex = setup.teams.findIndex((team) => team.id === currentTeamId);
+  const nextTeam = setup.teams[(currentIndex + 1) % setup.teams.length];
+
+  if (!nextTeam) {
+    return;
+  }
+
+  runtime.adapter = selectPlaySceneLoopTeam(runtime.adapter, {
+    side,
+    teamId: nextTeam.id
+  });
+  renderSetup(runtime.setup, projectPlaySceneLoopState(runtime.adapter).setup);
+}
+
+function startSetupMatch(this: PlaySceneContext): void {
+  const runtime = this.wallballPlay;
+
+  if (!runtime) {
+    return;
+  }
+
+  runtime.adapter = startPlaySceneLoopAdapter(runtime.adapter, currentTimeMs());
+  renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
 }
 
 function renderHud(
@@ -360,10 +473,23 @@ function renderHud(
   hud.matchup.setText?.(`${state.pitcherName} vs ${state.batterName}`);
 }
 
+function renderSetup(
+  setupObjects: PlaySceneSetupObjects,
+  setup: PlaySceneSetupProjection
+): void {
+  setupObjects.awayTeam.setText?.(`Away ${setup.awayTeamName}`);
+  setupObjects.homeTeam.setText?.(`Home ${setup.homeTeamName}`);
+  setupObjects.start.setText?.("Start / Restart");
+}
+
 function renderFielder(
   objects: PlaySceneFielderObjects | undefined,
   fielder: PlaySceneFielderProjection
 ): void {
   objects?.head.setPosition?.(fielder.position.x, fielder.position.y - 14);
   objects?.body.setPosition?.(fielder.position.x, fielder.position.y + 18);
+}
+
+function currentTimeMs(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }

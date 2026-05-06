@@ -33,6 +33,8 @@ export interface PlaySceneLoopAdapter {
   nextPitchDelayMs: number;
   pitchDurationMs: number;
   recoveryDelayMs: number;
+  scoreLimit: number;
+  setup: PlaySceneMatchSetupState;
 }
 
 export interface CreatePlaySceneLoopAdapterInput {
@@ -55,7 +57,31 @@ export interface PlaySceneLoopProjection {
   hud: PlaySceneHudProjection;
   lastResult: BallResultKind | null;
   phase: LocalMatchPhase;
+  setup: PlaySceneSetupProjection;
   wallTarget: WallTarget;
+}
+
+export type PlaySceneSetupSide = "away" | "home";
+
+export interface PlaySceneTeamOption {
+  id: string;
+  displayName: string;
+}
+
+export interface PlaySceneMatchSetupState {
+  awayTeamId: string;
+  homeTeamId: string;
+  teams: PlaySceneTeamOption[];
+}
+
+export interface SelectPlaySceneTeamInput {
+  side: PlaySceneSetupSide;
+  teamId: string;
+}
+
+export interface PlaySceneSetupProjection extends PlaySceneMatchSetupState {
+  awayTeamName: string;
+  homeTeamName: string;
 }
 
 export interface PlaySceneCompletionProjection {
@@ -102,9 +128,8 @@ const EMPTY_FIELDING_INPUT: FieldingInput = {
   axisY: 0
 };
 
-const DEFAULT_FIELDERS: readonly Fielder[] = [
+const DEFAULT_FIELDER_SLOTS: readonly Omit<Fielder, "id">[] = [
   {
-    id: "al",
     position: {
       x: 520,
       y: 260
@@ -112,7 +137,6 @@ const DEFAULT_FIELDERS: readonly Fielder[] = [
     speed: 240
   },
   {
-    id: "danny",
     position: {
       x: 430,
       y: 318
@@ -120,7 +144,6 @@ const DEFAULT_FIELDERS: readonly Fielder[] = [
     speed: 220
   },
   {
-    id: "regen",
     position: {
       x: 850,
       y: 316
@@ -133,7 +156,7 @@ export function createPlaySceneLoopAdapter({
   awayTeamId = DEFAULT_AWAY_TEAM_ID,
   controlledFielderId,
   fieldBounds = DEFAULT_FIELD_BOUNDS,
-  fielders = DEFAULT_FIELDERS,
+  fielders,
   homeTeamId = DEFAULT_HOME_TEAM_ID,
   nextPitchDelayMs = DEFAULT_NEXT_PITCH_DELAY_MS,
   pitchDurationMs = DEFAULT_PITCH_DURATION_MS,
@@ -142,12 +165,18 @@ export function createPlaySceneLoopAdapter({
   startedAtMs = 0
 }: CreatePlaySceneLoopAdapterInput = {}): PlaySceneLoopAdapter {
   const rosters = loadPredefinedRosters();
-  const awayRoster = findRoster(rosters, awayTeamId);
-  const homeRoster = findRoster(rosters, homeTeamId);
+  const setup = createPlaySceneMatchSetupState({
+    awayTeamId,
+    homeTeamId,
+    rosters
+  });
+  const awayRoster = findRoster(rosters, setup.awayTeamId);
+  const homeRoster = findRoster(rosters, setup.homeTeamId);
+  const matchFielders = fielders ?? createDefaultFielders(homeRoster);
 
   return {
     awayRoster,
-    controlledFielderId: controlledFielderId ?? fielders[0]?.id ?? null,
+    controlledFielderId: controlledFielderId ?? matchFielders[0]?.id ?? null,
     fieldBounds: cloneFieldBounds(fieldBounds),
     fieldingInput: cloneFieldingInput(EMPTY_FIELDING_INPUT),
     homeRoster,
@@ -155,7 +184,7 @@ export function createPlaySceneLoopAdapter({
     loop: createLocalMatchLoopState({
       awayRoster,
       homeRoster,
-      fielders,
+      fielders: matchFielders,
       maxRecoverySpeed: 1_000,
       recoveryRadius: 600,
       scoreLimit
@@ -163,8 +192,41 @@ export function createPlaySceneLoopAdapter({
     nextActionAtMs: startedAtMs,
     nextPitchDelayMs,
     pitchDurationMs,
-    recoveryDelayMs
+    recoveryDelayMs,
+    scoreLimit,
+    setup
   };
+}
+
+export function selectPlaySceneLoopTeam(
+  adapter: PlaySceneLoopAdapter,
+  { side, teamId }: SelectPlaySceneTeamInput
+): PlaySceneLoopAdapter {
+  assertKnownTeam(adapter.setup, teamId);
+
+  return {
+    ...adapter,
+    setup: {
+      ...adapter.setup,
+      [side === "away" ? "awayTeamId" : "homeTeamId"]: teamId
+    }
+  };
+}
+
+export function startPlaySceneLoopAdapter(
+  adapter: PlaySceneLoopAdapter,
+  startedAtMs = adapter.lastAdvancedAtMs
+): PlaySceneLoopAdapter {
+  return createPlaySceneLoopAdapter({
+    awayTeamId: adapter.setup.awayTeamId,
+    fieldBounds: adapter.fieldBounds,
+    homeTeamId: adapter.setup.homeTeamId,
+    nextPitchDelayMs: adapter.nextPitchDelayMs,
+    pitchDurationMs: adapter.pitchDurationMs,
+    recoveryDelayMs: adapter.recoveryDelayMs,
+    scoreLimit: adapter.scoreLimit,
+    startedAtMs
+  });
 }
 
 export function advancePlaySceneLoopAdapter(
@@ -264,12 +326,63 @@ export function projectPlaySceneLoopState(
     phase: {
       ...adapter.loop.phase
     },
+    setup: projectSetup(adapter.setup),
     wallTarget: {
       center: cloneVector(adapter.loop.settings.wallTarget.center),
       height: adapter.loop.settings.wallTarget.height,
       width: adapter.loop.settings.wallTarget.width
     }
   };
+}
+
+function createPlaySceneMatchSetupState({
+  awayTeamId,
+  homeTeamId,
+  rosters
+}: {
+  awayTeamId: string;
+  homeTeamId: string;
+  rosters: TeamRoster[];
+}): PlaySceneMatchSetupState {
+  const teams = rosters.map((roster) => ({
+    id: roster.id,
+    displayName: roster.displayName
+  }));
+  const setup = {
+    awayTeamId,
+    homeTeamId,
+    teams
+  };
+
+  assertKnownTeam(setup, awayTeamId);
+  assertKnownTeam(setup, homeTeamId);
+
+  return setup;
+}
+
+function projectSetup(setup: PlaySceneMatchSetupState): PlaySceneSetupProjection {
+  return {
+    ...setup,
+    awayTeamName: teamDisplayName(setup, setup.awayTeamId),
+    homeTeamName: teamDisplayName(setup, setup.homeTeamId),
+    teams: setup.teams.map((team) => ({ ...team }))
+  };
+}
+
+function assertKnownTeam(
+  setup: PlaySceneMatchSetupState,
+  teamId: string
+): void {
+  if (!setup.teams.some((team) => team.id === teamId)) {
+    throw new Error(`Missing play-scene roster: ${teamId}`);
+  }
+}
+
+function teamDisplayName(
+  setup: PlaySceneMatchSetupState,
+  teamId: string
+): string {
+  return setup.teams.find((team) => team.id === teamId)?.displayName ?? teamId;
 }
 
 function applyPitchControl(
@@ -390,6 +503,20 @@ function findRoster(rosters: TeamRoster[], teamId: string): TeamRoster {
   }
 
   return roster;
+}
+
+function createDefaultFielders(roster: TeamRoster): Fielder[] {
+  return getPlayersByBattingOrder(roster).map((player, index) => {
+    const slot =
+      DEFAULT_FIELDER_SLOTS[index] ??
+      DEFAULT_FIELDER_SLOTS[DEFAULT_FIELDER_SLOTS.length - 1];
+
+    return {
+      id: player.id,
+      position: cloneVector(slot.position),
+      speed: slot.speed
+    };
+  });
 }
 
 function getFieldingRoster(adapter: PlaySceneLoopAdapter): TeamRoster {
