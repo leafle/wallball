@@ -14,6 +14,14 @@ export type GameplayControlIntent =
       axisY: number;
       kind: "fielder-move";
       source: GameplayControlSource;
+    }
+  | {
+      kind: "pause-toggle";
+      source: GameplayControlSource;
+    }
+  | {
+      kind: "restart";
+      source: GameplayControlSource;
     };
 
 export interface FieldingInput {
@@ -28,12 +36,14 @@ export interface GameplayControlHelpItem {
   touch: string;
 }
 
-type GameplayAction = "pitch" | "swing";
+type GameplayAction = Exclude<GameplayControlIntent["kind"], "fielder-move">;
 type GameplayControlDispatch = (intent: GameplayControlIntent) => void;
 type KeyboardLikeEvent = Pick<KeyboardEvent, "code" | "key">;
 
 const PITCH_KEY_CODES = ["Enter", "KeyP"] as const;
 const SWING_KEY_CODES = ["Space"] as const;
+const PAUSE_KEY_CODES = ["Escape"] as const;
+const RESTART_KEY_CODES = ["KeyR"] as const;
 const LEFT_KEY_CODES = ["ArrowLeft", "KeyA"] as const;
 const RIGHT_KEY_CODES = ["ArrowRight", "KeyD"] as const;
 const UP_KEY_CODES = ["ArrowUp", "KeyW"] as const;
@@ -41,6 +51,8 @@ const DOWN_KEY_CODES = ["ArrowDown", "KeyS"] as const;
 
 const PITCH_KEYS: ReadonlySet<string> = new Set(PITCH_KEY_CODES);
 const SWING_KEYS: ReadonlySet<string> = new Set(SWING_KEY_CODES);
+const PAUSE_KEYS: ReadonlySet<string> = new Set(PAUSE_KEY_CODES);
+const RESTART_KEYS: ReadonlySet<string> = new Set(RESTART_KEY_CODES);
 const LEFT_KEYS: ReadonlySet<string> = new Set(LEFT_KEY_CODES);
 const RIGHT_KEYS: ReadonlySet<string> = new Set(RIGHT_KEY_CODES);
 const UP_KEYS: ReadonlySet<string> = new Set(UP_KEY_CODES);
@@ -55,6 +67,14 @@ export function keyboardActionForKey(
 
   if (PITCH_KEYS.has(event.code) || event.key === "Enter") {
     return "pitch";
+  }
+
+  if (PAUSE_KEYS.has(event.code)) {
+    return "pause-toggle";
+  }
+
+  if (RESTART_KEYS.has(event.code)) {
+    return "restart";
   }
 
   return null;
@@ -124,6 +144,18 @@ export function getGameplayControlHelpItems(): GameplayControlHelpItem[] {
       keyboard: "Arrow keys or WASD",
       label: "Fielding",
       touch: "Fielding pad"
+    },
+    {
+      action: "pause-toggle",
+      keyboard: formatKeyList(PAUSE_KEY_CODES),
+      label: "Pause / Resume",
+      touch: "Pause button"
+    },
+    {
+      action: "restart",
+      keyboard: formatKeyList(RESTART_KEY_CODES),
+      label: "Quick Restart",
+      touch: "Start / Restart button"
     }
   ];
 }
@@ -287,7 +319,12 @@ export function mountTouchGameplayControls(
 }
 
 function parseGameplayAction(value: string | undefined): GameplayAction | null {
-  return value === "pitch" || value === "swing" ? value : null;
+  return value === "pitch" ||
+    value === "swing" ||
+    value === "pause-toggle" ||
+    value === "restart"
+    ? value
+    : null;
 }
 
 function parseFieldingControlInput(element: HTMLElement): FieldingInput {

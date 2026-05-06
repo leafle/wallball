@@ -47,6 +47,7 @@ export interface PlaySceneLoopAdapter {
   nextPitchDelayMs: number;
   pitchDurationMs: number;
   recoveryDelayMs: number;
+  runState: PlaySceneRunState;
   scoreLimit: number;
   setup: PlaySceneMatchSetupState;
   soloAssist: PlaySceneSoloAssistSettings;
@@ -89,9 +90,19 @@ export interface PlaySceneLoopProjection {
   hud: PlaySceneHudProjection;
   lastResult: BallResultKind | null;
   phase: LocalMatchPhase;
+  runState: PlaySceneRunState;
   setup: PlaySceneSetupProjection;
   wallTarget: WallTarget;
 }
+
+export type PlaySceneRunState =
+  | {
+      kind: "running";
+    }
+  | {
+      kind: "paused";
+      pausedAtMs: number;
+    };
 
 export type PlaySceneSetupSide = "away" | "home";
 
@@ -244,6 +255,9 @@ export function createPlaySceneLoopAdapter({
     nextPitchDelayMs: resolvedNextPitchDelayMs,
     pitchDurationMs: resolvedPitchDurationMs,
     recoveryDelayMs: resolvedRecoveryDelayMs,
+    runState: {
+      kind: "running"
+    },
     scoreLimit: resolvedScoreLimit,
     setup,
     soloAssist: soloAssistSettings,
@@ -288,7 +302,10 @@ export function advancePlaySceneLoopAdapter(
   adapter: PlaySceneLoopAdapter,
   timeMs: number
 ): PlaySceneLoopAdapter {
-  if (adapter.loop.phase.kind === "match-completed") {
+  if (
+    adapter.runState.kind === "paused" ||
+    adapter.loop.phase.kind === "match-completed"
+  ) {
     return adapter;
   }
 
@@ -323,6 +340,18 @@ export function applyPlaySceneControlIntent(
   intent: GameplayControlIntent,
   timeMs: number
 ): PlaySceneLoopAdapter {
+  if (intent.kind === "restart") {
+    return startPlaySceneLoopAdapter(adapter, timeMs);
+  }
+
+  if (intent.kind === "pause-toggle") {
+    return togglePlaySceneLoopPause(adapter, timeMs);
+  }
+
+  if (adapter.runState.kind === "paused") {
+    return adapter;
+  }
+
   const current = advancePlaySceneLoopAdapter(adapter, timeMs);
 
   if (current.loop.phase.kind === "match-completed") {
@@ -388,11 +417,63 @@ export function projectPlaySceneLoopState(
     phase: {
       ...adapter.loop.phase
     },
+    runState: cloneRunState(adapter.runState),
     setup: projectSetup(adapter.setup),
     wallTarget: {
       center: cloneVector(adapter.loop.settings.wallTarget.center),
       height: adapter.loop.settings.wallTarget.height,
       width: adapter.loop.settings.wallTarget.width
+    }
+  };
+}
+
+function togglePlaySceneLoopPause(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  if (adapter.runState.kind === "paused") {
+    return resumePlaySceneLoopAdapter(adapter, timeMs);
+  }
+
+  return pausePlaySceneLoopAdapter(adapter, timeMs);
+}
+
+function pausePlaySceneLoopAdapter(
+  adapter: PlaySceneLoopAdapter,
+  pausedAtMs: number
+): PlaySceneLoopAdapter {
+  if (adapter.loop.phase.kind === "match-completed") {
+    return adapter;
+  }
+
+  const advanced = advancePlaySceneLoopAdapter(adapter, pausedAtMs);
+
+  return {
+    ...advanced,
+    runState: {
+      kind: "paused",
+      pausedAtMs
+    }
+  };
+}
+
+function resumePlaySceneLoopAdapter(
+  adapter: PlaySceneLoopAdapter,
+  resumedAtMs: number
+): PlaySceneLoopAdapter {
+  if (adapter.runState.kind !== "paused") {
+    return adapter;
+  }
+
+  const pausedDurationMs = Math.max(0, resumedAtMs - adapter.runState.pausedAtMs);
+
+  return {
+    ...adapter,
+    lastAdvancedAtMs: adapter.lastAdvancedAtMs + pausedDurationMs,
+    loop: shiftCurrentPitch(adapter.loop, pausedDurationMs),
+    nextActionAtMs: adapter.nextActionAtMs + pausedDurationMs,
+    runState: {
+      kind: "running"
     }
   };
 }
@@ -747,6 +828,34 @@ function cloneFieldBounds(bounds: FieldBounds): FieldBounds {
     maxX: bounds.maxX,
     minY: bounds.minY,
     maxY: bounds.maxY
+  };
+}
+
+function cloneRunState(runState: PlaySceneRunState): PlaySceneRunState {
+  return runState.kind === "paused"
+    ? {
+        kind: "paused",
+        pausedAtMs: runState.pausedAtMs
+      }
+    : {
+        kind: "running"
+      };
+}
+
+function shiftCurrentPitch(
+  loop: LocalMatchLoopState,
+  durationMs: number
+): LocalMatchLoopState {
+  if (!loop.currentPitch || durationMs <= 0) {
+    return loop;
+  }
+
+  return {
+    ...loop,
+    currentPitch: {
+      ...loop.currentPitch,
+      pitchStartedAtMs: loop.currentPitch.pitchStartedAtMs + durationMs
+    }
   };
 }
 

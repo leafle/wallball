@@ -386,7 +386,7 @@ function handleGameplayControlIntent(intent: GameplayControlIntent): void {
     void sendIntent("swing", {
       timingMs: 0
     }).catch(reportError);
-  } else {
+  } else if (intent.kind === "fielder-move") {
     void sendIntent("fielder-move", {
       axisX: intent.axisX,
       axisY: intent.axisY

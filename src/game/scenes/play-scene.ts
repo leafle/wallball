@@ -11,6 +11,7 @@ import {
   type PlaySceneHudProjection,
   type PlaySceneLoopAdapter,
   type PlaySceneLoopProjection,
+  type PlaySceneRunState,
   type PlaySceneSetupProjection,
   type PlaySceneSetupSide
 } from "./play-scene-loop-adapter";
@@ -107,6 +108,8 @@ interface PlaySceneHudObjects {
 interface PlaySceneSetupObjects {
   awayTeam: SceneObject;
   homeTeam: SceneObject;
+  pause: SceneObject;
+  restart: SceneObject;
   start: SceneObject;
 }
 
@@ -385,7 +388,7 @@ function drawSetupControls(
   this: PlaySceneContext,
   setup: PlaySceneSetupProjection
 ): PlaySceneSetupObjects {
-  this.add.rectangle(1_030, 72, 340, 96, COLORS.hud, 0.72).setStrokeStyle?.(
+  this.add.rectangle(1_030, 78, 340, 112, COLORS.hud, 0.72).setStrokeStyle?.(
     2,
     COLORS.hudAccent,
     0.46
@@ -394,16 +397,18 @@ function drawSetupControls(
   const awayTeam = addSetupText.call(
     this,
     884,
-    32,
+    30,
     `Away ${setup.awayTeamName}`
   );
   const homeTeam = addSetupText.call(
     this,
     884,
-    68,
+    64,
     `Home ${setup.homeTeamName}`
   );
-  const start = addSetupText.call(this, 1_114, 50, "Start / Restart");
+  const start = addSetupText.call(this, 1_114, 30, "Start / Restart");
+  const pause = addSetupText.call(this, 1_114, 64, "Pause");
+  const restart = addSetupText.call(this, 1_114, 98, "Restart");
 
   bindSetupControl(awayTeam, () => {
     cycleSetupTeam.call(this, "away");
@@ -414,10 +419,18 @@ function drawSetupControls(
   bindSetupControl(start, () => {
     startSetupMatch.call(this);
   });
+  bindSetupControl(pause, () => {
+    toggleSetupPause.call(this);
+  });
+  bindSetupControl(restart, () => {
+    restartSetupMatch.call(this);
+  });
 
   return {
     awayTeam,
     homeTeam,
+    pause,
+    restart,
     start
   };
 }
@@ -489,7 +502,7 @@ function renderProjection(
 ): void {
   renderHud(runtime.hud, projection.hud);
   renderFeedback(runtime.feedback, projection.feedback);
-  renderSetup(runtime.setup, projection.setup);
+  renderSetup(runtime.setup, projection.setup, projection.runState);
   runtime.ball.setPosition?.(
     projection.ball.position.x,
     projection.ball.position.y
@@ -547,6 +560,28 @@ function startSetupMatch(this: PlaySceneContext): void {
   renderAndEmitProjection(this, runtime);
 }
 
+function toggleSetupPause(this: PlaySceneContext): void {
+  dispatchWallballPlaySceneControlIntent.call(
+    this,
+    {
+      kind: "pause-toggle",
+      source: "touch"
+    },
+    currentTimeMs()
+  );
+}
+
+function restartSetupMatch(this: PlaySceneContext): void {
+  dispatchWallballPlaySceneControlIntent.call(
+    this,
+    {
+      kind: "restart",
+      source: "touch"
+    },
+    currentTimeMs()
+  );
+}
+
 function emitPlaySceneProjection(
   context: PlaySceneContext,
   runtime: PlaySceneRuntime,
@@ -574,6 +609,7 @@ function emitPlaySceneProjection(
 function projectionEventKey(projection: PlaySceneLoopProjection): string {
   return [
     projection.phase.kind,
+    projection.runState.kind,
     projection.hud.awayScore,
     projection.hud.homeScore,
     projection.hud.batterName,
@@ -641,11 +677,14 @@ function feedbackResultText(
 
 function renderSetup(
   setupObjects: PlaySceneSetupObjects,
-  setup: PlaySceneSetupProjection
+  setup: PlaySceneSetupProjection,
+  runState: PlaySceneRunState
 ): void {
   setupObjects.awayTeam.setText?.(`Away ${setup.awayTeamName}`);
   setupObjects.homeTeam.setText?.(`Home ${setup.homeTeamName}`);
   setupObjects.start.setText?.("Start / Restart");
+  setupObjects.pause.setText?.(runState.kind === "paused" ? "Resume" : "Pause");
+  setupObjects.restart.setText?.("Restart");
 }
 
 function renderFielder(

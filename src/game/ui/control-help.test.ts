@@ -29,6 +29,14 @@ describe("control help panel", () => {
             {
               label: "Fielding",
               detail: "Arrow keys or WASD / Fielding pad"
+            },
+            {
+              label: "Pause / Resume",
+              detail: "Escape / Pause button"
+            },
+            {
+              label: "Quick Restart",
+              detail: "R / Start / Restart button"
             }
           ]
         },

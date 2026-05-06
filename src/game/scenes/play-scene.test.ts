@@ -8,6 +8,10 @@ import {
   updateWallballPlayScene
 } from "./play-scene";
 
+type FakePlaySceneRuntime = NonNullable<
+  ThisParameterType<typeof createWallballPlayScene>["wallballPlay"]
+>;
+
 interface DrawCall {
   kind: "circle" | "rectangle" | "text";
   height?: number;
@@ -53,6 +57,7 @@ interface FakeSceneContext {
       style: Record<string, string>
     ) => FakeSceneObject;
   };
+  wallballPlay?: FakePlaySceneRuntime;
   wallballProjectionTarget?: Pick<EventTarget, "dispatchEvent">;
 }
 
@@ -88,7 +93,9 @@ describe("createWallballPlayScene", () => {
         expect.objectContaining({ kind: "text", text: "Woodland 0" }),
         expect.objectContaining({ kind: "text", text: "Outs 0" }),
         expect.objectContaining({ kind: "text", text: "Batter Cainer" }),
-        expect.objectContaining({ kind: "text", text: "Danny vs Cainer" })
+        expect.objectContaining({ kind: "text", text: "Danny vs Cainer" }),
+        expect.objectContaining({ kind: "text", text: "Pause" }),
+        expect.objectContaining({ kind: "text", text: "Restart" })
       ])
     );
   });
@@ -300,6 +307,36 @@ describe("createWallballPlayScene", () => {
         expect.objectContaining({ kind: "text", text: "Batter Al" }),
         expect.objectContaining({ kind: "text", text: "JSack vs Al" })
       ])
+    );
+  });
+
+  it("toggles pause state and quick restarts through local scene controls", () => {
+    const calls: DrawCall[] = [];
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene);
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      100
+    );
+    updateWallballPlayScene.call(scene, 2_000, 0);
+
+    expect(scene.wallballPlay?.adapter.runState.kind).toBe("paused");
+    expect(scene.wallballPlay?.adapter.loop.phase.kind).toBe("ready-for-at-bat");
+    expect(calls).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: "Resume" })])
+    );
+
+    triggerText(calls, "Restart");
+
+    expect(scene.wallballPlay?.adapter.runState.kind).toBe("running");
+    expect(scene.wallballPlay?.adapter.loop.phase.kind).toBe("ready-for-at-bat");
+    expect(calls).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: "Pause" })])
     );
   });
 });

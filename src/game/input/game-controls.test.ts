@@ -15,6 +15,10 @@ describe("desktop gameplay controls", () => {
       "pitch"
     );
     expect(keyboardActionForKey({ code: "KeyP", key: "p" })).toBe("pitch");
+    expect(keyboardActionForKey({ code: "Escape", key: "Escape" })).toBe(
+      "pause-toggle"
+    );
+    expect(keyboardActionForKey({ code: "KeyR", key: "r" })).toBe("restart");
     expect(keyboardActionForKey({ code: "KeyX", key: "x" })).toBeNull();
   });
 
@@ -50,6 +54,18 @@ describe("desktop gameplay controls", () => {
         keyboard: "Arrow keys or WASD",
         label: "Fielding",
         touch: "Fielding pad"
+      },
+      {
+        action: "pause-toggle",
+        keyboard: "Escape",
+        label: "Pause / Resume",
+        touch: "Pause button"
+      },
+      {
+        action: "restart",
+        keyboard: "R",
+        label: "Quick Restart",
+        touch: "Start / Restart button"
       }
     ]);
   });

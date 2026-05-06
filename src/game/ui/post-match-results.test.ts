@@ -155,6 +155,9 @@ const completedProjection: PlaySceneLoopProjection = {
       winnerTeamId: "champions"
     }
   },
+  runState: {
+    kind: "running"
+  },
   setup: {
     awayTeamId: "champions",
     awayTeamName: "Champions",

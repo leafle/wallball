@@ -312,6 +312,143 @@ describe("play scene local loop adapter", () => {
     });
   });
 
+  it("freezes advancement while paused and resumes solo assist timing from the pause point", () => {
+    const initial = createPlaySceneLoopAdapter({
+      pitchDurationMs: 200,
+      soloAssist: {
+        enabled: true,
+        pitchDelayMs: 400
+      },
+      startedAtMs: 1_000
+    });
+    const paused = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      1_200
+    );
+
+    const stillPaused = advancePlaySceneLoopAdapter(paused, 4_000);
+
+    expect(projectPlaySceneLoopState(stillPaused)).toMatchObject({
+      phase: {
+        kind: "ready-for-at-bat"
+      },
+      runState: {
+        kind: "paused"
+      }
+    });
+
+    const resumed = applyPlaySceneControlIntent(
+      stillPaused,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      5_000
+    );
+
+    expect(
+      projectPlaySceneLoopState(advancePlaySceneLoopAdapter(resumed, 5_199)).phase
+        .kind
+    ).toBe("ready-for-at-bat");
+    expect(
+      projectPlaySceneLoopState(advancePlaySceneLoopAdapter(resumed, 5_200)).phase
+        .kind
+    ).toBe("pitch-in-flight");
+  });
+
+  it("does not count paused wall-clock time against pitch swing timing", () => {
+    const initial = createPlaySceneLoopAdapter({
+      pitchDurationMs: 200,
+      startedAtMs: 1_000
+    });
+    const pitched = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    const paused = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      1_080
+    );
+    const resumed = applyPlaySceneControlIntent(
+      paused,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      5_000
+    );
+    const swung = applyPlaySceneControlIntent(
+      resumed,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      5_100
+    );
+
+    expect(swung.loop.lastPlay?.swingTimingMs).toBe(-20);
+  });
+
+  it("freezes held fielding movement while paused", () => {
+    const initial = createPlaySceneLoopAdapter({ startedAtMs: 0 });
+    const moving = applyPlaySceneControlIntent(
+      initial,
+      {
+        axisX: 1,
+        axisY: 0,
+        kind: "fielder-move",
+        source: "touch"
+      },
+      0
+    );
+    const advanced = advancePlaySceneLoopAdapter(moving, 500);
+    const paused = applyPlaySceneControlIntent(
+      advanced,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      500
+    );
+    const stillPaused = advancePlaySceneLoopAdapter(paused, 1_000);
+    const resumed = applyPlaySceneControlIntent(
+      stillPaused,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      1_000
+    );
+    const movedAfterResume = advancePlaySceneLoopAdapter(resumed, 1_500);
+
+    expect(projectPlaySceneLoopState(stillPaused).fielders[0]).toMatchObject({
+      id: "al",
+      position: {
+        x: 640,
+        y: 260
+      }
+    });
+    expect(projectPlaySceneLoopState(movedAfterResume).fielders[0]).toMatchObject({
+      id: "al",
+      position: {
+        x: 760,
+        y: 260
+      }
+    });
+  });
+
   it("projects a typed completion result when controls reach the local score limit", () => {
     const initial = createPlaySceneLoopAdapter({
       scoreLimit: 1,
@@ -520,6 +657,52 @@ describe("play scene local loop adapter", () => {
       homeTeamName: "EJ",
       inning: 1,
       outs: 0
+    });
+  });
+
+  it("quick restart control preserves selected teams and resumes from a paused match", () => {
+    const selected = selectPlaySceneLoopTeam(
+      selectPlaySceneLoopTeam(createPlaySceneLoopAdapter({ startedAtMs: 1_000 }), {
+        side: "away",
+        teamId: "team-cainer"
+      }),
+      {
+        side: "home",
+        teamId: "ej"
+      }
+    );
+    const started = startPlaySceneLoopAdapter(selected, 1_000);
+    const scored = scorePlateAppearance(started, 1_000);
+    const paused = applyPlaySceneControlIntent(
+      scored,
+      {
+        kind: "pause-toggle",
+        source: "keyboard"
+      },
+      1_500
+    );
+    const restarted = applyPlaySceneControlIntent(
+      paused,
+      {
+        kind: "restart",
+        source: "keyboard"
+      },
+      5_000
+    );
+
+    expect(projectPlaySceneLoopState(restarted)).toMatchObject({
+      hud: {
+        awayScore: 0,
+        awayTeamName: "Team Cainer",
+        batterName: "Rich",
+        homeScore: 0,
+        homeTeamName: "EJ",
+        inning: 1,
+        outs: 0
+      },
+      runState: {
+        kind: "running"
+      }
     });
   });
 });
