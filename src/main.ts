@@ -4,8 +4,9 @@ import {
   type WallballDataClient
 } from "./game/data/game-data-client";
 import { loadPredefinedRosters } from "./game/data/fixtures";
+import type { InteractionCallout } from "./game/domain/friend-interactions";
 import type { HighScore } from "./game/domain/high-scores";
-import type { MatchSummary } from "./game/domain/match-summary";
+import type { CompletedMatch, MatchSummary } from "./game/domain/match-summary";
 import {
   getGameplayControlHelpItems,
   mountKeyboardGameplayControls,
@@ -37,6 +38,12 @@ import {
   type PostMatchRecordState,
   type PostMatchResultsPanelProjection
 } from "./game/ui/post-match-results";
+import {
+  projectMatchHistoryScreen,
+  type MatchHistoryPlayerLabel,
+  type MatchHistoryScreenProjection,
+  type MatchHistoryTeamLabel
+} from "./game/ui/match-history-screen";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -50,6 +57,13 @@ const battingPrototypeParent = "batting-prototype";
 const controlHelpParent = "control-help";
 const controlHelpStorageKey = "wallball.controlHelp.dismissed";
 const postMatchResultsParent = "post-match-results";
+const matchHistoryParent = "match-history";
+const localRivalryMatchup = {
+  batterId: "cainer",
+  pitcherId: "al"
+} as const;
+const localRivalryPlayerIds = ["cainer", "al"] as const;
+const localRivalryTeamIds = ["champions", "woodland"] as const;
 const rosters = loadPredefinedRosters();
 const localDataClient = createFixtureWallballDataClient();
 const remoteClient = createRemoteRoomClient();
@@ -90,6 +104,25 @@ const localResultsState: LocalResultsUiState = {
   summary: null
 };
 
+interface LocalHistoryUiState {
+  highScores: HighScore[];
+  matches: CompletedMatch[];
+  players: MatchHistoryPlayerLabel[];
+  rivalryCallout: InteractionCallout | null;
+  teams: MatchHistoryTeamLabel[];
+}
+
+const localHistoryState: LocalHistoryUiState = {
+  highScores: [],
+  matches: [],
+  players: [],
+  rivalryCallout: null,
+  teams: rosters.map(({ displayName, id }) => ({
+    displayName,
+    id
+  }))
+};
+
 let phaserShell: MountedPhaserGameShell | null = null;
 let controlHelpDismissed = readControlHelpDismissed();
 
@@ -121,12 +154,20 @@ app.innerHTML = `
             data-width="${String(config.width)}"
             data-height="${String(config.height)}"
           ></div>
-          <aside
-            id="${postMatchResultsParent}"
-            class="post-match-panel"
-            aria-live="polite"
-            aria-label="Local match results and leaderboard"
-          ></aside>
+          <div class="local-side-panel">
+            <aside
+              id="${postMatchResultsParent}"
+              class="post-match-panel"
+              aria-live="polite"
+              aria-label="Local match results and leaderboard"
+            ></aside>
+            <aside
+              id="${matchHistoryParent}"
+              class="match-history-panel"
+              aria-live="polite"
+              aria-label="Match history and rivalry summary"
+            ></aside>
+          </div>
         </div>
         <div
           id="${battingPrototypeParent}"
@@ -231,6 +272,7 @@ const controlHelpElement = getElement<HTMLElement>(`#${controlHelpParent}`);
 const postMatchResultsElement = getElement<HTMLElement>(
   `#${postMatchResultsParent}`
 );
+const matchHistoryElement = getElement<HTMLElement>(`#${matchHistoryParent}`);
 
 window.addEventListener(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, (event) => {
   void handlePlaySceneProjection(
@@ -238,7 +280,7 @@ window.addEventListener(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, (event) => {
   ).catch(reportLocalResultsError);
 });
 
-void initializeLocalResultsPanel(localDataClient).catch(reportLocalResultsError);
+void initializeLocalDataPanels(localDataClient).catch(reportLocalResultsError);
 void mountPhaserGameShell()
   .then((mounted) => {
     phaserShell = mounted;
@@ -284,6 +326,7 @@ controlHelpElement.addEventListener("click", (event) => {
 renderRemoteState();
 renderControlHelpPanel();
 renderLocalResultsPanel();
+renderMatchHistoryPanel();
 
 async function createRoom(): Promise<void> {
   const result = await remoteClient.createRoom({
@@ -394,20 +437,42 @@ async function recordMatch(): Promise<void> {
   });
 }
 
-async function initializeLocalResultsPanel(
+async function initializeLocalDataPanels(
   dataClient: WallballDataClient
 ): Promise<void> {
-  const [players, highScores] = await Promise.all([
+  const [players, teams] = await Promise.all([
     dataClient.listPlayers(),
-    dataClient.getHighScores("runs")
+    dataClient.listTeams()
   ]);
-
-  localResultsState.players = players.map(({ displayName, id }) => ({
+  const playerLabels = players.map(({ displayName, id }) => ({
     displayName,
     id
   }));
-  localResultsState.highScores = highScores;
+
+  localResultsState.players = playerLabels;
+  localHistoryState.players = playerLabels;
+  localHistoryState.teams = teams.map(({ displayName, id }) => ({
+    displayName,
+    id
+  }));
+  await refreshLocalHistoryPanel(dataClient);
   renderLocalResultsPanel();
+}
+
+async function refreshLocalHistoryPanel(
+  dataClient: WallballDataClient
+): Promise<void> {
+  const [highScores, matches, interactionContext] = await Promise.all([
+    dataClient.getHighScores("runs"),
+    dataClient.getMatchHistory(),
+    dataClient.getInteractionContext(localRivalryMatchup)
+  ]);
+
+  localResultsState.highScores = highScores;
+  localHistoryState.highScores = highScores;
+  localHistoryState.matches = matches;
+  localHistoryState.rivalryCallout = interactionContext.matchHistoryCallout;
+  renderMatchHistoryPanel();
 }
 
 async function handlePlaySceneProjection(
@@ -456,6 +521,7 @@ async function handlePlaySceneProjection(
     localResultsState.highScores = recorded.highScores;
     localResultsState.recordState = "recorded";
     localResultsState.summary = recorded.summary;
+    await refreshLocalHistoryPanel(localDataClient);
   } catch (error) {
     if (localResultsState.activeCompletionKey !== completionKey) {
       return;
@@ -471,6 +537,81 @@ async function handlePlaySceneProjection(
 
     renderLocalResultsPanel();
   }
+}
+
+function renderMatchHistoryPanel(): void {
+  renderMatchHistoryPanelProjection(
+    projectMatchHistoryScreen({
+      highScores: localHistoryState.highScores,
+      matches: localHistoryState.matches,
+      players: localHistoryState.players,
+      rivalry: {
+        callout: localHistoryState.rivalryCallout,
+        playerIds: localRivalryPlayerIds,
+        teamIds: localRivalryTeamIds
+      },
+      teams: localHistoryState.teams
+    })
+  );
+}
+
+function renderMatchHistoryPanelProjection(
+  panel: MatchHistoryScreenProjection
+): void {
+  matchHistoryElement.innerHTML = `
+    <div class="match-history-header">
+      <div>
+        <h2>${escapeHtml(panel.title)}</h2>
+        <p>${escapeHtml(panel.statusLabel)}</p>
+      </div>
+    </div>
+    <section class="match-history-section">
+      <h3>Rivalry</h3>
+      <p class="rivalry-title">${escapeHtml(panel.rivalry.title)}</p>
+      <dl class="rivalry-lines">
+        <div>
+          <dt>Head to head</dt>
+          <dd>${escapeHtml(panel.rivalry.recordLabel)}</dd>
+        </div>
+        <div>
+          <dt>Latest</dt>
+          <dd>${escapeHtml(panel.rivalry.recentResultLabel)}</dd>
+        </div>
+        <div>
+          <dt>Runs</dt>
+          <dd>${escapeHtml(panel.rivalry.runLeaderLabel)}</dd>
+        </div>
+      </dl>
+      ${
+        panel.rivalry.calloutText
+          ? `<p class="rivalry-callout">${escapeHtml(panel.rivalry.calloutText)}</p>`
+          : ""
+      }
+    </section>
+    <section class="match-history-section">
+      <h3>Recent Matches</h3>
+      ${renderRecentMatchRows(panel)}
+    </section>
+  `;
+}
+
+function renderRecentMatchRows(panel: MatchHistoryScreenProjection): string {
+  if (panel.emptyHistoryText) {
+    return `<p class="empty-row">${escapeHtml(panel.emptyHistoryText)}</p>`;
+  }
+
+  return `<ol class="match-history-list">${panel.recentRows
+    .map(
+      (row) => `
+        <li>
+          <span>${escapeHtml(row.playedAtLabel)}</span>
+          <strong>${escapeHtml(row.scoreLabel)}</strong>
+          <em>${escapeHtml(row.resultLabel)}</em>
+          <small>${escapeHtml(row.detail)}</small>
+        </li>
+      `
+    )
+    .join("")}</ol>`;
 }
 
 function renderLocalResultsPanel(): void {
