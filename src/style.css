@@ -283,6 +283,13 @@ label {
   bottom: 16px;
 }
 
+[data-control-action],
+[data-control-field-x],
+[data-control-field-y] {
+  touch-action: none;
+  user-select: none;
+}
+
 .resolution-pill,
 .room-state span {
   display: inline-flex;
@@ -300,13 +307,14 @@ label {
 
 .remote-console {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 16px;
 }
 
 .connection-grid,
 .activity-grid,
-.intent-grid {
+.intent-grid,
+.fielding-pad {
   display: grid;
   gap: 12px;
 }
@@ -344,7 +352,41 @@ label {
 }
 
 .intent-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fielding-pad {
+  max-width: 360px;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+}
+
+.fielding-control {
+  min-height: 52px;
+  color: #fffaf0;
+  background: #357f75;
+}
+
+.fielding-control:hover {
+  background: #459d90;
+}
+
+.fielding-up {
+  grid-column: 2;
+}
+
+.fielding-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.fielding-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.fielding-down {
+  grid-column: 2;
+  grid-row: 3;
 }
 
 .activity-grid {

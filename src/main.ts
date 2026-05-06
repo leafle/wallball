@@ -1,5 +1,10 @@
 import { GAME_HEIGHT, GAME_WIDTH, createBaseGameConfig } from "./game/config";
 import { loadPredefinedRosters } from "./game/data/fixtures";
+import {
+  mountKeyboardGameplayControls,
+  mountTouchGameplayControls,
+  type GameplayControlIntent
+} from "./game/input/game-controls";
 import { createRemoteRoomClient } from "./game/remote/room-client";
 import { mountBattingPrototype } from "./game/ui/batting-prototype";
 import type {
@@ -56,7 +61,7 @@ app.innerHTML = `
         data-height="${String(config.height)}"
       ></div>
     </section>
-    <section class="remote-console" aria-label="Remote two-player controls">
+    <section id="remote-console" class="remote-console" aria-label="Remote two-player controls">
       <div class="connection-grid">
         <form id="create-room-form" class="control-group">
           <h2>Create Room</h2>
@@ -92,11 +97,35 @@ app.innerHTML = `
       </div>
       <div class="intent-grid" aria-label="Player intents">
         <button id="ready-intent" type="button">Ready</button>
-        <button id="pitch-intent" type="button">Pitch</button>
-        <button id="swing-intent" type="button">Swing</button>
-        <button id="left-intent" type="button">Left</button>
-        <button id="right-intent" type="button">Right</button>
+        <button id="pitch-intent" type="button" data-control-action="pitch">Pitch</button>
+        <button id="swing-intent" type="button" data-control-action="swing">Swing</button>
         <button id="record-match" type="button">Record</button>
+      </div>
+      <div class="fielding-pad" aria-label="Fielding controls">
+        <button
+          class="fielding-control fielding-up"
+          type="button"
+          aria-label="Move fielder up"
+          data-control-field-y="-1"
+        >Up</button>
+        <button
+          class="fielding-control fielding-left"
+          type="button"
+          aria-label="Move fielder left"
+          data-control-field-x="-1"
+        >Left</button>
+        <button
+          class="fielding-control fielding-right"
+          type="button"
+          aria-label="Move fielder right"
+          data-control-field-x="1"
+        >Right</button>
+        <button
+          class="fielding-control fielding-down"
+          type="button"
+          aria-label="Move fielder down"
+          data-control-field-y="1"
+        >Down</button>
       </div>
       <div class="activity-grid">
         <section class="activity-panel" aria-labelledby="intent-log-title">
@@ -119,11 +148,14 @@ const guestNameInput = getElement<HTMLInputElement>("#guest-name");
 const joinCodeInput = getElement<HTMLInputElement>("#join-code");
 const awayTeamSelect = getElement<HTMLSelectElement>("#away-team");
 const homeTeamSelect = getElement<HTMLSelectElement>("#home-team");
+const remoteConsoleElement = getElement<HTMLElement>("#remote-console");
 const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
 
 mountBattingPrototype(getElement<HTMLDivElement>(`#${String(config.parent)}`));
+void mountKeyboardGameplayControls(window, handleGameplayControlIntent);
+void mountTouchGameplayControls(remoteConsoleElement, handleGameplayControlIntent);
 
 homeTeamSelect.value = rosters[1]?.id ?? rosters[0]?.id ?? "";
 joinCodeInput.value = new URLSearchParams(window.location.search).get("room") ?? "";
@@ -139,19 +171,6 @@ joinRoomForm.addEventListener("submit", (event) => {
 });
 
 bindIntentButton("#ready-intent", "ready", {});
-bindIntentButton("#pitch-intent", "pitch", {
-  targetX: GAME_WIDTH / 2,
-  speed: 42
-});
-bindIntentButton("#swing-intent", "swing", {
-  timingMs: 0
-});
-bindIntentButton("#left-intent", "fielder-move", {
-  axisX: -1
-});
-bindIntentButton("#right-intent", "fielder-move", {
-  axisX: 1
-});
 
 getElement<HTMLButtonElement>("#record-match").addEventListener("click", () => {
   void recordMatch().catch(reportError);
@@ -203,6 +222,24 @@ function bindIntentButton(
   getElement<HTMLButtonElement>(selector).addEventListener("click", () => {
     void sendIntent(kind, payload).catch(reportError);
   });
+}
+
+function handleGameplayControlIntent(intent: GameplayControlIntent): void {
+  if (intent.kind === "pitch") {
+    void sendIntent("pitch", {
+      targetX: GAME_WIDTH / 2,
+      speed: 42
+    }).catch(reportError);
+  } else if (intent.kind === "swing") {
+    void sendIntent("swing", {
+      timingMs: 0
+    }).catch(reportError);
+  } else {
+    void sendIntent("fielder-move", {
+      axisX: intent.axisX,
+      axisY: intent.axisY
+    }).catch(reportError);
+  }
 }
 
 async function sendIntent(

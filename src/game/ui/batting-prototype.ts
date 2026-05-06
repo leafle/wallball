@@ -4,6 +4,11 @@ import {
   calculateSwingTimingMs,
   type BattingLaunch
 } from "../systems/batting";
+import {
+  mountKeyboardGameplayControls,
+  mountTouchGameplayControls,
+  type GameplayControlIntent
+} from "../input/game-controls";
 import type { Vector2 } from "../systems/ball-physics";
 
 type PrototypePhase = "idle" | "pitching" | "launched";
@@ -60,8 +65,8 @@ export function mountBattingPrototype(host: HTMLElement): () => void {
       </div>
       <div class="prototype-ball" data-role="ball"></div>
       <div class="prototype-controls">
-        <button type="button" data-action="pitch">Pitch</button>
-        <button type="button" data-action="swing">Swing</button>
+        <button type="button" data-control-action="pitch">Pitch</button>
+        <button type="button" data-control-action="swing">Swing</button>
       </div>
     </div>
   `;
@@ -72,8 +77,6 @@ export function mountBattingPrototype(host: HTMLElement): () => void {
   const phaseLabel = getElement<HTMLElement>(host, "[data-role='phase']");
   const timingLabel = getElement<HTMLElement>(host, "[data-role='timing']");
   const resultLabel = getElement<HTMLElement>(host, "[data-role='result']");
-  const pitchButton = getElement<HTMLButtonElement>(host, "[data-action='pitch']");
-  const swingButton = getElement<HTMLButtonElement>(host, "[data-action='swing']");
 
   const render = (nowMs: number): void => {
     const pitchPosition = currentPitchPosition(state, nowMs);
@@ -156,31 +159,40 @@ export function mountBattingPrototype(host: HTMLElement): () => void {
     resultLabel.textContent = `${launch.result.contactQuality} ${launch.result.kind}`;
   };
 
-  pitchButton.addEventListener("pointerdown", startPitch);
-  swingButton.addEventListener("pointerdown", swing);
-  lab.addEventListener("pointerdown", (event) => {
-    if (!(event.target instanceof HTMLButtonElement)) {
-      swing();
-    }
-  });
-  window.addEventListener("keydown", handleKeyDown);
-  state.frameId = window.requestAnimationFrame(render);
-
-  function handleKeyDown(event: KeyboardEvent): void {
-    if (event.code === "Space") {
-      event.preventDefault();
-      swing();
-    } else if (event.key.toLowerCase() === "p" || event.key === "Enter") {
+  const handleControlIntent = (intent: GameplayControlIntent): void => {
+    if (intent.kind === "pitch") {
       startPitch();
+    } else if (intent.kind === "swing") {
+      swing();
     }
-  }
+  };
+  const cleanupKeyboardControls = mountKeyboardGameplayControls(
+    window,
+    handleControlIntent
+  );
+  const cleanupTouchControls = mountTouchGameplayControls(lab, handleControlIntent);
+  const handleLabPointerDown = (event: PointerEvent): void => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-control-action], [data-control-field-x], [data-control-field-y]")
+    ) {
+      return;
+    }
+
+    swing();
+  };
+
+  lab.addEventListener("pointerdown", handleLabPointerDown);
+  state.frameId = window.requestAnimationFrame(render);
 
   return () => {
     if (state.frameId !== null) {
       window.cancelAnimationFrame(state.frameId);
     }
 
-    window.removeEventListener("keydown", handleKeyDown);
+    lab.removeEventListener("pointerdown", handleLabPointerDown);
+    cleanupKeyboardControls();
+    cleanupTouchControls();
   };
 }
 
