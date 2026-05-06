@@ -83,6 +83,68 @@ describe("fixture Wallball data client", () => {
     expect(summary.finalScore).toBe("champions 3, woodland 1");
   });
 
+  it("updates runs high scores when recording a match", async () => {
+    const client = createFixtureWallballDataClient({
+      highScores: [
+        {
+          category: "runs",
+          playerId: "minkus",
+          value: 1,
+          matchId: "match-previous",
+          recordedAt: "2026-05-05T18:00:00.000Z"
+        }
+      ]
+    });
+
+    await client.recordMatch({
+      id: "match-2",
+      playedAt: "2026-05-06T18:00:00.000Z",
+      teams: {
+        away: "champions",
+        home: "woodland"
+      },
+      score: {
+        away: 2,
+        home: 0
+      },
+      innings: 1,
+      events: [
+        {
+          kind: "home-run",
+          playerId: "cainer",
+          inning: 1
+        },
+        {
+          kind: "run",
+          playerId: "cainer",
+          inning: 1
+        },
+        {
+          kind: "run",
+          playerId: "cainer",
+          inning: 1
+        }
+      ]
+    });
+
+    await expect(client.getHighScores("runs")).resolves.toEqual([
+      {
+        category: "runs",
+        playerId: "cainer",
+        value: 2,
+        matchId: "match-2",
+        recordedAt: "2026-05-06T18:00:00.000Z"
+      },
+      {
+        category: "runs",
+        playerId: "minkus",
+        value: 1,
+        matchId: "match-previous",
+        recordedAt: "2026-05-05T18:00:00.000Z"
+      }
+    ]);
+  });
+
   it("derives interaction context from fixture prompts and stored history", async () => {
     const client = createFixtureWallballDataClient({
       matches: [

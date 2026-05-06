@@ -1,5 +1,6 @@
 import type { TeamRoster } from "../domain/rosters";
 import { createBattingOrderFromRosters } from "../domain/rosters";
+import type { Score } from "../domain/rules";
 import type {
   BallPhysicsSnapshot,
   Vector2,
@@ -40,7 +41,17 @@ export type LocalMatchPhase =
   | {
       kind: "awaiting-recovery";
       batterId: string;
+    }
+  | {
+      kind: "match-completed";
+      result: LocalMatchCompletionResult;
     };
+
+export interface LocalMatchCompletionResult {
+  loserTeamId: string | null;
+  score: Score;
+  winnerTeamId: string | null;
+}
 
 export interface LocalPitch {
   pitchStartedAtMs: number;
@@ -87,6 +98,7 @@ export interface CreateLocalMatchLoopStateInput {
   homeRoster: TeamRoster;
   fielders?: readonly Fielder[];
   maxInnings?: number;
+  scoreLimit?: number;
   ballStart?: Vector2;
   wall?: WallPlane;
   wallTarget?: WallTarget;
@@ -151,6 +163,7 @@ export function createLocalMatchLoopState({
   homeRoster,
   fielders = [],
   maxInnings,
+  scoreLimit,
   ballStart = DEFAULT_BALL_START,
   wall = DEFAULT_WALL,
   wallTarget = DEFAULT_WALL_TARGET,
@@ -167,7 +180,8 @@ export function createLocalMatchLoopState({
     awayTeamId: awayRoster.id,
     homeTeamId: homeRoster.id,
     battingOrder,
-    maxInnings
+    maxInnings,
+    scoreLimit
   });
 
   return {
@@ -199,6 +213,10 @@ export function advanceLocalMatchLoop(
   state: LocalMatchLoopState,
   action: LocalMatchLoopAction
 ): LocalMatchLoopState {
+  if (state.phase.kind === "match-completed") {
+    throw new Error("Cannot advance a completed match");
+  }
+
   if (action.type === "pitch") {
     return pitchLocalMatch(state, action);
   }
@@ -397,7 +415,9 @@ function finishPlateAppearance(
   return {
     ...state,
     flow: plateAppearance.state,
-    phase: readyForAtBat(plateAppearance.state),
+    phase: plateAppearance.matchCompleted
+      ? matchCompleted(plateAppearance.state)
+      : readyForAtBat(plateAppearance.state),
     currentPitch: null,
     lastPlay: {
       ...state.lastPlay,
@@ -409,6 +429,24 @@ function finishPlateAppearance(
         halfInningEnded: plateAppearance.halfInningEnded,
         matchCompleted: plateAppearance.matchCompleted
       }
+    }
+  };
+}
+
+function matchCompleted(flow: MatchFlowState): LocalMatchPhase {
+  const { away, home } = flow.match.teams;
+  const { score } = flow.match;
+  const winnerTeamId =
+    score.away === score.home ? null : score.away > score.home ? away : home;
+  const loserTeamId =
+    winnerTeamId === null ? null : winnerTeamId === away ? home : away;
+
+  return {
+    kind: "match-completed",
+    result: {
+      loserTeamId,
+      score: { ...score },
+      winnerTeamId
     }
   };
 }

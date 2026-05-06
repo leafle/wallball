@@ -15,9 +15,11 @@ import type { FieldBounds, Fielder } from "../systems/fielding";
 import {
   advanceLocalMatchLoop,
   createLocalMatchLoopState,
+  type LocalMatchCompletionResult,
   type LocalMatchLoopState,
   type LocalMatchPhase
 } from "../systems/local-match-loop";
+import { getCurrentBatterId } from "../systems/match-flow";
 
 export interface PlaySceneLoopAdapter {
   awayRoster: TeamRoster;
@@ -42,16 +44,26 @@ export interface CreatePlaySceneLoopAdapterInput {
   nextPitchDelayMs?: number;
   pitchDurationMs?: number;
   recoveryDelayMs?: number;
+  scoreLimit?: number;
   startedAtMs?: number;
 }
 
 export interface PlaySceneLoopProjection {
   ball: BallPhysicsSnapshot;
+  completion: PlaySceneCompletionProjection | null;
   fielders: PlaySceneFielderProjection[];
   hud: PlaySceneHudProjection;
   lastResult: BallResultKind | null;
   phase: LocalMatchPhase;
   wallTarget: WallTarget;
+}
+
+export interface PlaySceneCompletionProjection {
+  finalScore: string;
+  loserTeamId: string | null;
+  loserTeamName: string | null;
+  winnerTeamId: string | null;
+  winnerTeamName: string | null;
 }
 
 export interface PlaySceneHudProjection {
@@ -64,6 +76,7 @@ export interface PlaySceneHudProjection {
   inning: number;
   outs: number;
   pitcherName: string;
+  completionText: string | null;
 }
 
 export interface PlaySceneFielderProjection {
@@ -77,6 +90,7 @@ const DEFAULT_HOME_TEAM_ID = "woodland";
 const DEFAULT_NEXT_PITCH_DELAY_MS = 640;
 const DEFAULT_PITCH_DURATION_MS = 180;
 const DEFAULT_RECOVERY_DELAY_MS = 300;
+const DEFAULT_SCORE_LIMIT = 3;
 const DEFAULT_FIELD_BOUNDS: FieldBounds = {
   minX: 320,
   maxX: 960,
@@ -124,6 +138,7 @@ export function createPlaySceneLoopAdapter({
   nextPitchDelayMs = DEFAULT_NEXT_PITCH_DELAY_MS,
   pitchDurationMs = DEFAULT_PITCH_DURATION_MS,
   recoveryDelayMs = DEFAULT_RECOVERY_DELAY_MS,
+  scoreLimit = DEFAULT_SCORE_LIMIT,
   startedAtMs = 0
 }: CreatePlaySceneLoopAdapterInput = {}): PlaySceneLoopAdapter {
   const rosters = loadPredefinedRosters();
@@ -142,7 +157,8 @@ export function createPlaySceneLoopAdapter({
       homeRoster,
       fielders,
       maxRecoverySpeed: 1_000,
-      recoveryRadius: 600
+      recoveryRadius: 600,
+      scoreLimit
     }),
     nextActionAtMs: startedAtMs,
     nextPitchDelayMs,
@@ -155,6 +171,10 @@ export function advancePlaySceneLoopAdapter(
   adapter: PlaySceneLoopAdapter,
   timeMs: number
 ): PlaySceneLoopAdapter {
+  if (adapter.loop.phase.kind === "match-completed") {
+    return adapter;
+  }
+
   const movedAdapter = moveControlledFielder(adapter, timeMs);
 
   if (
@@ -185,6 +205,10 @@ export function applyPlaySceneControlIntent(
 ): PlaySceneLoopAdapter {
   const current = advancePlaySceneLoopAdapter(adapter, timeMs);
 
+  if (current.loop.phase.kind === "match-completed") {
+    return current;
+  }
+
   if (intent.kind === "fielder-move") {
     return {
       ...current,
@@ -208,15 +232,17 @@ export function projectPlaySceneLoopState(
   adapter: PlaySceneLoopAdapter
 ): PlaySceneLoopProjection {
   const { flow } = adapter.loop;
-  const batterId = adapter.loop.phase.batterId;
+  const batterId = getProjectedBatterId(adapter);
   const fieldingRoster = getFieldingRoster(adapter);
   const pitcher = getPitcher(fieldingRoster);
+  const completion = projectCompletion(adapter);
 
   return {
     ball: {
       position: cloneVector(adapter.loop.ball.position),
       velocity: cloneVector(adapter.loop.ball.velocity)
     },
+    completion,
     fielders: adapter.loop.fielders.map((fielder) => ({
       displayName: getPlayerName(adapter, fielder.id),
       id: fielder.id,
@@ -231,7 +257,8 @@ export function projectPlaySceneLoopState(
       homeTeamName: adapter.homeRoster.displayName,
       inning: flow.match.inning.inning,
       outs: flow.match.inning.outs,
-      pitcherName: pitcher.displayName
+      pitcherName: pitcher.displayName,
+      completionText: completion ? `Final: ${completion.finalScore}` : null
     },
     lastResult: adapter.loop.lastPlay?.ballResult.kind ?? null,
     phase: {
@@ -318,6 +345,43 @@ function isIdleFieldingInput(input: FieldingInput): boolean {
   return input.axisX === 0 && input.axisY === 0;
 }
 
+function getProjectedBatterId(adapter: PlaySceneLoopAdapter): string {
+  if (adapter.loop.phase.kind !== "match-completed") {
+    return adapter.loop.phase.batterId;
+  }
+
+  return adapter.loop.lastPlay?.batterId ?? getCurrentBatterId(adapter.loop.flow);
+}
+
+function projectCompletion(
+  adapter: PlaySceneLoopAdapter
+): PlaySceneCompletionProjection | null {
+  if (adapter.loop.phase.kind !== "match-completed") {
+    return null;
+  }
+
+  const result = adapter.loop.phase.result;
+
+  return {
+    finalScore: formatFinalScore(adapter, result),
+    loserTeamId: result.loserTeamId,
+    loserTeamName: result.loserTeamId
+      ? getTeamName(adapter, result.loserTeamId)
+      : null,
+    winnerTeamId: result.winnerTeamId,
+    winnerTeamName: result.winnerTeamId
+      ? getTeamName(adapter, result.winnerTeamId)
+      : null
+  };
+}
+
+function formatFinalScore(
+  adapter: PlaySceneLoopAdapter,
+  result: LocalMatchCompletionResult
+): string {
+  return `${adapter.awayRoster.displayName} ${result.score.away}, ${adapter.homeRoster.displayName} ${result.score.home}`;
+}
+
 function findRoster(rosters: TeamRoster[], teamId: string): TeamRoster {
   const roster = rosters.find((team) => team.id === teamId);
 
@@ -349,6 +413,18 @@ function getPlayerName(
   );
 
   return player?.displayName ?? playerId;
+}
+
+function getTeamName(adapter: PlaySceneLoopAdapter, teamId: string): string {
+  if (adapter.awayRoster.id === teamId) {
+    return adapter.awayRoster.displayName;
+  }
+
+  if (adapter.homeRoster.id === teamId) {
+    return adapter.homeRoster.displayName;
+  }
+
+  return teamId;
 }
 
 function getPlayersByBattingOrder(roster: TeamRoster): PlayerProfile[] {

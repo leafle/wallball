@@ -132,6 +132,47 @@ describe("local match loop", () => {
       y: 260
     });
   });
+
+  it("enters a completed phase when the score limit is reached", () => {
+    const completed = pitchSwingRecover(
+      createLocalMatchLoopState({
+        awayRoster: getRoster("champions"),
+        homeRoster: getRoster("woodland"),
+        fielders,
+        maxRecoverySpeed: 1_000,
+        recoveryRadius: 600,
+        scoreLimit: 1
+      }),
+      1_180
+    );
+
+    expect(completed.lastPlay?.plateAppearance).toMatchObject({
+      batterId: "cainer",
+      matchCompleted: true,
+      result: "home-run",
+      runsScored: ["cainer"]
+    });
+    expect(completed.phase).toEqual({
+      kind: "match-completed",
+      result: {
+        loserTeamId: "woodland",
+        score: {
+          away: 1,
+          home: 0
+        },
+        winnerTeamId: "champions"
+      }
+    });
+    expect(() =>
+      advanceLocalMatchLoop(completed, {
+        type: "pitch",
+        pitchStartedAtMs: 2_000,
+        idealContactMs: 180,
+        pitchX: 0,
+        targetX: 0
+      })
+    ).toThrow("Cannot advance a completed match");
+  });
 });
 
 function createTestLoopState(): LocalMatchLoopState {

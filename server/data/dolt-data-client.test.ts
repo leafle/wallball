@@ -109,6 +109,15 @@ describeWithDolt("Dolt CLI Wallball data client", () => {
           sourceMatchId: "dolt-match-1"
         }
       });
+      await expect(client.getHighScores("runs")).resolves.toEqual([
+        {
+          category: "runs",
+          playerId: "cainer",
+          value: 1,
+          matchId: "dolt-match-1",
+          recordedAt: "2026-05-06 18:00:00"
+        }
+      ]);
       expect(summary.finalScore).toBe("champions 6, woodland 5");
     } finally {
       fixture.cleanup();

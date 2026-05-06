@@ -4,6 +4,7 @@ import type {
 } from "../../src/game/domain/friend-interactions";
 import { getInteractionContext } from "../../src/game/domain/friend-interactions";
 import type { HighScore } from "../../src/game/domain/high-scores";
+import { getRunHighScoreCandidates } from "../../src/game/domain/high-scores";
 import type {
   CompletedMatch,
   MatchEvent
@@ -18,7 +19,6 @@ import type {
 } from "../../src/game/data/game-data-client";
 import {
   cloneCompletedMatch,
-  cloneHighScore,
   cloneInteractionPrompt,
   clonePlayerFixture,
   cloneTeamFixture
@@ -211,6 +211,24 @@ export function createDoltCliWallballDataClient({
              ${sqlString(event.kind)},
              ${sqlString(event.playerId)},
              ${event.inning}
+           )`
+        );
+      }
+
+      for (const score of getRunHighScoreCandidates(persistedMatch)) {
+        await client.execute(
+          `INSERT INTO high_scores (
+             category,
+             player_id,
+             value,
+             match_id,
+             recorded_at
+           ) VALUES (
+             ${sqlString(score.category)},
+             ${sqlString(score.playerId)},
+             ${score.value},
+             ${sqlString(score.matchId)},
+             ${sqlString(toSqlTimestamp(score.recordedAt))}
            )`
         );
       }

@@ -156,4 +156,51 @@ describe("play scene local loop adapter", () => {
       }
     });
   });
+
+  it("projects a typed completion result when controls reach the local score limit", () => {
+    const initial = createPlaySceneLoopAdapter({
+      scoreLimit: 1,
+      startedAtMs: 1_000
+    });
+    const pitched = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    const swung = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+    const completed = advancePlaySceneLoopAdapter(swung, 1_500);
+    const projection = projectPlaySceneLoopState(completed);
+
+    expect(projection.phase.kind).toBe("match-completed");
+    expect(projection.hud.completionText).toBe("Final: Champions 1, Woodland 0");
+    expect(projection.completion).toEqual({
+      finalScore: "Champions 1, Woodland 0",
+      loserTeamId: "woodland",
+      loserTeamName: "Woodland",
+      winnerTeamId: "champions",
+      winnerTeamName: "Champions"
+    });
+    expect(
+      projectPlaySceneLoopState(
+        applyPlaySceneControlIntent(
+          completed,
+          {
+            kind: "pitch",
+            source: "keyboard"
+          },
+          2_000
+        )
+      ).phase.kind
+    ).toBe("match-completed");
+  });
 });

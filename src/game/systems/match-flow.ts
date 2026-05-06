@@ -1,5 +1,5 @@
 import type { HighScore } from "../domain/high-scores";
-import { updateHighScores } from "../domain/high-scores";
+import { updateRunHighScoresFromMatch } from "../domain/high-scores";
 import type {
   CompletedMatch,
   MatchEvent,
@@ -25,6 +25,7 @@ export interface MatchFlowState {
   events: MatchEvent[];
   completedInnings: number;
   maxInnings: number;
+  scoreLimit: number | null;
 }
 
 export interface CreateMatchFlowStateInput {
@@ -32,6 +33,7 @@ export interface CreateMatchFlowStateInput {
   homeTeamId: string;
   battingOrder: MatchFlowBattingOrder;
   maxInnings?: number;
+  scoreLimit?: number;
 }
 
 export interface PlateAppearanceUpdate {
@@ -66,10 +68,16 @@ export function createMatchFlowState({
   awayTeamId,
   homeTeamId,
   battingOrder,
-  maxInnings = 3
+  maxInnings = 3,
+  scoreLimit
 }: CreateMatchFlowStateInput): MatchFlowState {
   validateBattingOrder("away", battingOrder.away);
   validateBattingOrder("home", battingOrder.home);
+  validatePositiveInteger("maxInnings", maxInnings);
+
+  if (scoreLimit !== undefined) {
+    validatePositiveInteger("scoreLimit", scoreLimit);
+  }
 
   return {
     match: createMatchState({ awayTeamId, homeTeamId }),
@@ -84,7 +92,8 @@ export function createMatchFlowState({
     },
     events: [],
     completedInnings: 0,
-    maxInnings
+    maxInnings,
+    scoreLimit: scoreLimit ?? null
   };
 }
 
@@ -187,12 +196,23 @@ export function recordCompletedMatch(
 }
 
 export function isMatchComplete(state: MatchFlowState): boolean {
-  return state.completedInnings >= state.maxInnings;
+  return (
+    state.completedInnings >= state.maxInnings ||
+    (state.scoreLimit !== null &&
+      (state.match.score.away >= state.scoreLimit ||
+        state.match.score.home >= state.scoreLimit))
+  );
 }
 
 function validateBattingOrder(side: BattingSide, battingOrder: RunnerId[]): void {
   if (battingOrder.length === 0) {
     throw new Error(`Expected at least one ${side} batter`);
+  }
+}
+
+function validatePositiveInteger(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Expected ${name} to be a positive integer`);
   }
 }
 
@@ -238,34 +258,5 @@ function applyRunsLeaderboard(
   highScores: HighScore[],
   match: CompletedMatch
 ): HighScore[] {
-  const runsByPlayer = countRunsByPlayer(match.events);
-
-  return [...runsByPlayer.entries()].reduce(
-    (scores, [playerId, value]) =>
-      updateHighScores(scores, {
-        category: "runs",
-        playerId,
-        value,
-        matchId: match.id,
-        recordedAt: match.playedAt
-      }),
-    highScores.map((score) => ({ ...score }))
-  );
-}
-
-function countRunsByPlayer(events: MatchEvent[]): Map<RunnerId, number> {
-  const runsByPlayer = new Map<RunnerId, number>();
-
-  for (const event of events) {
-    if (event.kind !== "run") {
-      continue;
-    }
-
-    runsByPlayer.set(
-      event.playerId,
-      (runsByPlayer.get(event.playerId) ?? 0) + 1
-    );
-  }
-
-  return runsByPlayer;
+  return updateRunHighScoresFromMatch(highScores, match);
 }

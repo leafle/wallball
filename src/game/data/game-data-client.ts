@@ -11,6 +11,7 @@ import {
   type PlayerMatchup
 } from "../domain/friend-interactions";
 import type { HighScore } from "../domain/high-scores";
+import { updateRunHighScoresFromMatch } from "../domain/high-scores";
 import type { CompletedMatch, MatchSummary } from "../domain/match-summary";
 import { generateMatchSummary } from "../domain/match-summary";
 
@@ -73,6 +74,10 @@ export function createFixtureWallballDataClient({
     async recordMatch(match) {
       const persistedMatch = cloneCompletedMatch(match);
       state.matches.push(persistedMatch);
+      state.highScores = updateRunHighScoresFromMatch(
+        state.highScores,
+        persistedMatch
+      );
 
       return generateMatchSummary(persistedMatch);
     }
