@@ -21,16 +21,30 @@ export interface FieldingInput {
   axisY: number;
 }
 
+export interface GameplayControlHelpItem {
+  action: GameplayControlIntent["kind"];
+  keyboard: string;
+  label: string;
+  touch: string;
+}
+
 type GameplayAction = "pitch" | "swing";
 type GameplayControlDispatch = (intent: GameplayControlIntent) => void;
 type KeyboardLikeEvent = Pick<KeyboardEvent, "code" | "key">;
 
-const PITCH_KEYS = new Set(["Enter", "KeyP"]);
-const SWING_KEYS = new Set(["Space"]);
-const LEFT_KEYS = new Set(["ArrowLeft", "KeyA"]);
-const RIGHT_KEYS = new Set(["ArrowRight", "KeyD"]);
-const UP_KEYS = new Set(["ArrowUp", "KeyW"]);
-const DOWN_KEYS = new Set(["ArrowDown", "KeyS"]);
+const PITCH_KEY_CODES = ["Enter", "KeyP"] as const;
+const SWING_KEY_CODES = ["Space"] as const;
+const LEFT_KEY_CODES = ["ArrowLeft", "KeyA"] as const;
+const RIGHT_KEY_CODES = ["ArrowRight", "KeyD"] as const;
+const UP_KEY_CODES = ["ArrowUp", "KeyW"] as const;
+const DOWN_KEY_CODES = ["ArrowDown", "KeyS"] as const;
+
+const PITCH_KEYS: ReadonlySet<string> = new Set(PITCH_KEY_CODES);
+const SWING_KEYS: ReadonlySet<string> = new Set(SWING_KEY_CODES);
+const LEFT_KEYS: ReadonlySet<string> = new Set(LEFT_KEY_CODES);
+const RIGHT_KEYS: ReadonlySet<string> = new Set(RIGHT_KEY_CODES);
+const UP_KEYS: ReadonlySet<string> = new Set(UP_KEY_CODES);
+const DOWN_KEYS: ReadonlySet<string> = new Set(DOWN_KEY_CODES);
 
 export function keyboardActionForKey(
   event: KeyboardLikeEvent
@@ -89,6 +103,29 @@ export function combineFieldingInputs(
     axisX: clamp(axisX, -1, 1),
     axisY: clamp(axisY, -1, 1)
   };
+}
+
+export function getGameplayControlHelpItems(): GameplayControlHelpItem[] {
+  return [
+    {
+      action: "pitch",
+      keyboard: formatKeyList(PITCH_KEY_CODES),
+      label: "Pitch",
+      touch: "Pitch button"
+    },
+    {
+      action: "swing",
+      keyboard: formatKeyList(SWING_KEY_CODES),
+      label: "Swing",
+      touch: "Swing button"
+    },
+    {
+      action: "fielder-move",
+      keyboard: "Arrow keys or WASD",
+      label: "Fielding",
+      touch: "Fielding pad"
+    }
+  ];
 }
 
 export function mountKeyboardGameplayControls(
@@ -266,6 +303,26 @@ function parseAxisValue(value: string | undefined): number {
   }
 
   return clamp(Number(value) || 0, -1, 1);
+}
+
+function formatKeyList(codes: readonly string[]): string {
+  return codes.map(formatKeyCode).join(" or ");
+}
+
+function formatKeyCode(code: string): string {
+  if (code === "Space") {
+    return "Space";
+  }
+
+  if (code === "Enter") {
+    return "Enter";
+  }
+
+  if (code.startsWith("Key")) {
+    return code.slice(3);
+  }
+
+  return code;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

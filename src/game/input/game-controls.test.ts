@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   combineFieldingInputs,
   fieldingInputFromKeys,
+  getGameplayControlHelpItems,
   isFieldingKey,
   keyboardActionForKey
 } from "./game-controls";
@@ -28,6 +29,29 @@ describe("desktop gameplay controls", () => {
     });
     expect(isFieldingKey("KeyS")).toBe(true);
     expect(isFieldingKey("Space")).toBe(false);
+  });
+
+  it("projects reusable control help metadata from the same key bindings", () => {
+    expect(getGameplayControlHelpItems()).toEqual([
+      {
+        action: "pitch",
+        keyboard: "Enter or P",
+        label: "Pitch",
+        touch: "Pitch button"
+      },
+      {
+        action: "swing",
+        keyboard: "Space",
+        label: "Swing",
+        touch: "Swing button"
+      },
+      {
+        action: "fielder-move",
+        keyboard: "Arrow keys or WASD",
+        label: "Fielding",
+        touch: "Fielding pad"
+      }
+    ]);
   });
 });
 

@@ -146,6 +146,100 @@ label {
   height: 100%;
 }
 
+.control-help-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  border: 1px solid #505849;
+  border-radius: 8px;
+  padding: 12px;
+  color: #f6f2e8;
+  background: #20231f;
+}
+
+.control-help-panel.is-dismissed {
+  padding: 8px 10px;
+}
+
+.control-help-header,
+.control-help-collapsed {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.control-help-header h2 {
+  margin: 0 0 4px;
+}
+
+.control-help-header p {
+  margin: 0;
+  color: #d8d1c0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.control-help-header button,
+.control-help-collapsed button {
+  min-height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.control-help-collapsed {
+  align-items: center;
+}
+
+.control-help-collapsed span {
+  color: #d8d1c0;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.control-help-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.control-help-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.control-help-section h3 {
+  margin: 0;
+  color: #4cb7a5;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.control-help-section dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.control-help-section div {
+  display: grid;
+  gap: 2px;
+}
+
+.control-help-section dt {
+  color: #fffaf0;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.control-help-section dd {
+  margin: 0;
+  color: #d8d1c0;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 .post-match-panel {
   display: grid;
   align-content: start;
@@ -687,5 +781,14 @@ label {
 
   .intent-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-help-header,
+  .control-help-collapsed {
+    align-items: stretch;
+  }
+
+  .control-help-sections {
+    grid-template-columns: 1fr;
   }
 }

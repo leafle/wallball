@@ -7,6 +7,7 @@ import { loadPredefinedRosters } from "./game/data/fixtures";
 import type { HighScore } from "./game/domain/high-scores";
 import type { MatchSummary } from "./game/domain/match-summary";
 import {
+  getGameplayControlHelpItems,
   mountKeyboardGameplayControls,
   mountTouchGameplayControls,
   type GameplayControlIntent
@@ -29,6 +30,7 @@ import {
 } from "./game/scenes/play-scene";
 import { recordLocalMatchCompletion } from "./game/systems/match-completion";
 import { mountBattingPrototype } from "./game/ui/batting-prototype";
+import { projectControlHelpPanel } from "./game/ui/control-help";
 import {
   projectPostMatchResultsPanel,
   type PostMatchPlayerLabel,
@@ -45,6 +47,8 @@ if (!app) {
 
 const config = createBaseGameConfig();
 const battingPrototypeParent = "batting-prototype";
+const controlHelpParent = "control-help";
+const controlHelpStorageKey = "wallball.controlHelp.dismissed";
 const postMatchResultsParent = "post-match-results";
 const rosters = loadPredefinedRosters();
 const localDataClient = createFixtureWallballDataClient();
@@ -87,6 +91,7 @@ const localResultsState: LocalResultsUiState = {
 };
 
 let phaserShell: MountedPhaserGameShell | null = null;
+let controlHelpDismissed = readControlHelpDismissed();
 
 const rosterOptions = rosters
   .map((team) => `<option value="${team.id}">${team.displayName}</option>`)
@@ -102,6 +107,11 @@ app.innerHTML = `
         </div>
         <span class="resolution-pill">${GAME_WIDTH} x ${GAME_HEIGHT}</span>
       </div>
+      <aside
+        id="${controlHelpParent}"
+        class="control-help-panel"
+        aria-label="Control help"
+      ></aside>
       <div class="game-stage-grid">
         <div class="play-surface-grid">
           <div
@@ -217,6 +227,7 @@ const remoteConsoleElement = getElement<HTMLElement>("#remote-console");
 const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
+const controlHelpElement = getElement<HTMLElement>(`#${controlHelpParent}`);
 const postMatchResultsElement = getElement<HTMLElement>(
   `#${postMatchResultsParent}`
 );
@@ -256,7 +267,22 @@ getElement<HTMLButtonElement>("#record-match").addEventListener("click", () => {
   void recordMatch().catch(reportError);
 });
 
+controlHelpElement.addEventListener("click", (event) => {
+  const action =
+    event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-control-help-action]")?.dataset
+          .controlHelpAction
+      : undefined;
+
+  if (action === "dismiss" || action === "show") {
+    controlHelpDismissed = action === "dismiss";
+    writeControlHelpDismissed(controlHelpDismissed);
+    renderControlHelpPanel();
+  }
+});
+
 renderRemoteState();
+renderControlHelpPanel();
 renderLocalResultsPanel();
 
 async function createRoom(): Promise<void> {
@@ -527,6 +553,82 @@ function renderLeaderboardRows(panel: PostMatchResultsPanelProjection): string {
       `
     )
     .join("")}</ol>`;
+}
+
+function renderControlHelpPanel(): void {
+  const panel = projectControlHelpPanel({
+    controlItems: getGameplayControlHelpItems(),
+    dismissed: controlHelpDismissed
+  });
+
+  if (panel.dismissed) {
+    controlHelpElement.classList.add("is-dismissed");
+    controlHelpElement.innerHTML = `
+      <div class="control-help-collapsed">
+        <span>${escapeHtml(panel.title)} hidden</span>
+        <button type="button" data-control-help-action="show">Show</button>
+      </div>
+    `;
+    return;
+  }
+
+  controlHelpElement.classList.remove("is-dismissed");
+  controlHelpElement.innerHTML = `
+    <div class="control-help-header">
+      <div>
+        <h2>${escapeHtml(panel.title)}</h2>
+        <p>${escapeHtml(panel.summary)}</p>
+      </div>
+      <button type="button" data-control-help-action="dismiss">Hide</button>
+    </div>
+    <div class="control-help-sections">
+      ${panel.sections
+        .map(
+          (section) => `
+            <section class="control-help-section">
+              <h3>${escapeHtml(section.title)}</h3>
+              <dl>
+                ${section.rows
+                  .map(
+                    (row) => `
+                      <div>
+                        <dt>${escapeHtml(row.label)}</dt>
+                        <dd>${escapeHtml(row.detail)}</dd>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </dl>
+            </section>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function readControlHelpDismissed(): boolean {
+  if (typeof localStorage === "undefined") {
+    return false;
+  }
+
+  try {
+    return localStorage.getItem(controlHelpStorageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeControlHelpDismissed(dismissed: boolean): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(controlHelpStorageKey, String(dismissed));
+  } catch {
+    // Local storage can be unavailable; the in-memory state still updates.
+  }
 }
 
 function reportLocalResultsError(error: unknown): void {
