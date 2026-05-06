@@ -1,0 +1,72 @@
+export interface PlayerFixture {
+  id: string;
+  displayName: string;
+  battingOrder: number;
+  tags: string[];
+}
+
+export interface TeamFixture {
+  id: string;
+  displayName: string;
+  players: PlayerFixture[];
+}
+
+const predefinedRosters: TeamFixture[] = [
+  {
+    id: "champions",
+    displayName: "Champions",
+    players: [
+      player("cainer", "Cainer", 1, "champions"),
+      player("minkus", "Minkus", 2, "champions"),
+      player("brandon", "Brandon", 3, "champions")
+    ]
+  },
+  {
+    id: "woodland",
+    displayName: "Woodland",
+    players: [
+      player("al", "Al", 1, "woodland"),
+      player("danny", "Danny", 2, "woodland"),
+      player("regen", "Regen", 3, "woodland")
+    ]
+  },
+  {
+    id: "team-cainer",
+    displayName: "Team Cainer",
+    players: [
+      player("rich", "Rich", 1, "team-cainer"),
+      player("jsack", "JSack", 2, "team-cainer"),
+      player("jeremy", "Jeremy", 3, "team-cainer")
+    ]
+  },
+  {
+    id: "ej",
+    displayName: "EJ",
+    players: [
+      player("bobby", "Bobby", 1, "ej"),
+      player("nick", "Nick", 2, "ej"),
+      player("andrew", "Andrew", 3, "ej")
+    ]
+  }
+];
+
+export function loadPredefinedRosters(): TeamFixture[] {
+  return predefinedRosters.map((team) => ({
+    ...team,
+    players: team.players.map((rosterPlayer) => ({ ...rosterPlayer }))
+  }));
+}
+
+function player(
+  id: string,
+  displayName: string,
+  battingOrder: number,
+  teamTag: string
+): PlayerFixture {
+  return {
+    id,
+    displayName,
+    battingOrder,
+    tags: [teamTag]
+  };
+}
