@@ -1,6 +1,7 @@
 import { GAME_HEIGHT, GAME_WIDTH, createBaseGameConfig } from "./game/config";
 import { loadPredefinedRosters } from "./game/data/fixtures";
 import { createRemoteRoomClient } from "./game/remote/room-client";
+import { mountBattingPrototype } from "./game/ui/batting-prototype";
 import type {
   RemoteAssignment,
   RemoteIntentKind,
@@ -121,6 +122,8 @@ const homeTeamSelect = getElement<HTMLSelectElement>("#home-team");
 const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
+
+mountBattingPrototype(getElement<HTMLDivElement>(`#${String(config.parent)}`));
 
 homeTeamSelect.value = rosters[1]?.id ?? rosters[0]?.id ?? "";
 joinCodeInput.value = new URLSearchParams(window.location.search).get("room") ?? "";
