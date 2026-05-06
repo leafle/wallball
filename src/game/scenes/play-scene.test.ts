@@ -208,6 +208,80 @@ describe("createWallballPlayScene", () => {
     );
   });
 
+  it("renders gameplay feedback without covering the critical HUD or target", () => {
+    const calls: DrawCall[] = [];
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene);
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+
+    expect(textCall(calls, "Pitch in flight")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 622
+      })
+    );
+
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+
+    expect(textCall(calls, "Swing: perfect contact")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 622
+      })
+    );
+    expect(textCall(calls, "Recover the ball")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 650
+      })
+    );
+    expect(textCall(calls, "Target hit")).toEqual(
+      expect.objectContaining({
+        x: 584,
+        y: 202
+      })
+    );
+    expect(textCall(calls, "Target hit").x).toBeGreaterThan(560);
+
+    updateWallballPlayScene.call(scene, 1_500, 0);
+
+    expect(textCall(calls, "1 run scored")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 622
+      })
+    );
+    expect(textCall(calls, "Ball recovered")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 650
+      })
+    );
+    expect(textCall(calls, "1 run scored").y).toBeGreaterThan(
+      Math.max(
+        yForText(calls, "Champions 1"),
+        yForText(calls, "Woodland 0"),
+        yForText(calls, "Batter Minkus"),
+        yForText(calls, "Danny vs Minkus")
+      )
+    );
+  });
+
   it("draws local setup controls and restarts with selected teams", () => {
     const calls: DrawCall[] = [];
     const scene = createFakeSceneContext(calls);
@@ -311,13 +385,23 @@ function scorePlateAppearance(scene: FakeSceneContext, pitchStartedAtMs: number)
 }
 
 function yForText(calls: DrawCall[], text: string): number {
-  const call = calls.find(
-    (candidate) => candidate.kind === "text" && candidate.text === text
-  );
+  const call = textCall(calls, text);
 
   if (typeof call?.y !== "number") {
     throw new Error(`Missing y position for ${text}`);
   }
 
   return call.y;
+}
+
+function textCall(calls: DrawCall[], text: string): DrawCall {
+  const call = calls.find(
+    (candidate) => candidate.kind === "text" && candidate.text === text
+  );
+
+  if (!call) {
+    throw new Error(`Missing text call for ${text}`);
+  }
+
+  return call;
 }

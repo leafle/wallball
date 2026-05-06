@@ -379,6 +379,63 @@ describe("play scene local loop adapter", () => {
     });
   });
 
+  it("projects typed play feedback cues for Phaser rendering", () => {
+    const initial = createPlaySceneLoopAdapter({
+      scoreLimit: 1,
+      startedAtMs: 1_000
+    });
+    const pitched = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+
+    expect(projectPlaySceneLoopState(pitched).feedback.primary).toMatchObject({
+      kind: "pitch",
+      text: "Pitch in flight"
+    });
+
+    const swung = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+
+    expect(projectPlaySceneLoopState(swung).feedback).toMatchObject({
+      primary: {
+        kind: "swing-contact",
+        text: "Swing: perfect contact"
+      },
+      secondary: {
+        kind: "recovery",
+        text: "Recover the ball"
+      },
+      wall: {
+        kind: "target-hit",
+        text: "Target hit"
+      }
+    });
+
+    const completed = advancePlaySceneLoopAdapter(swung, 1_500);
+
+    expect(projectPlaySceneLoopState(completed).feedback).toMatchObject({
+      primary: {
+        kind: "match-complete",
+        text: "Match complete"
+      },
+      result: {
+        kind: "run",
+        text: "1 run scored"
+      }
+    });
+  });
+
   it("selects predefined teams and starts a fresh deterministic loop", () => {
     const initial = createPlaySceneLoopAdapter({ startedAtMs: 1_000 });
     const withAway = selectPlaySceneLoopTeam(initial, {

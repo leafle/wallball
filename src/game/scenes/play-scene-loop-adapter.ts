@@ -23,6 +23,10 @@ import type {
 import type { BallResultKind } from "../systems/ball-results";
 import type { FieldBounds, Fielder } from "../systems/fielding";
 import {
+  projectLocalMatchFeedback,
+  type LocalMatchFeedbackProjection
+} from "../systems/local-match-feedback";
+import {
   advanceLocalMatchLoop,
   createLocalMatchLoopState,
   type LocalMatchCompletionResult,
@@ -80,6 +84,7 @@ export interface PlaySceneLoopProjection {
   ball: BallPhysicsSnapshot;
   callout: InteractionCallout | null;
   completion: PlaySceneCompletionProjection | null;
+  feedback: LocalMatchFeedbackProjection;
   fielders: PlaySceneFielderProjection[];
   hud: PlaySceneHudProjection;
   lastResult: BallResultKind | null;
@@ -360,6 +365,7 @@ export function projectPlaySceneLoopState(
     },
     callout,
     completion,
+    feedback: projectLocalMatchFeedback(adapter.loop),
     fielders: adapter.loop.fielders.map((fielder) => ({
       displayName: getPlayerName(adapter, fielder.id),
       id: fielder.id,

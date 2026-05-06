@@ -113,6 +113,22 @@ const completedProjection: PlaySceneLoopProjection = {
     winnerTeamId: "champions",
     winnerTeamName: "Champions"
   },
+  feedback: {
+    primary: {
+      anchor: "results",
+      kind: "match-complete",
+      text: "Match complete",
+      tone: "complete"
+    },
+    result: {
+      anchor: "field",
+      kind: "run",
+      text: "1 run scored",
+      tone: "positive"
+    },
+    secondary: null,
+    wall: null
+  },
   fielders: [],
   hud: {
     awayScore: 2,

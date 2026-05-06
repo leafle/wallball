@@ -70,6 +70,7 @@ interface PlaySceneContext {
 interface PlaySceneRuntime {
   adapter: PlaySceneLoopAdapter;
   ball: SceneObject;
+  feedback: PlaySceneFeedbackObjects;
   fielders: PlaySceneFielderObjects[];
   hud: PlaySceneHudObjects;
   lastProjectionEventKey: string;
@@ -84,6 +85,13 @@ interface PlaySceneActors {
 interface PlaySceneFielderObjects {
   body: SceneObject;
   head: SceneObject;
+}
+
+interface PlaySceneFeedbackObjects {
+  primary: SceneObject;
+  result: SceneObject;
+  secondary: SceneObject;
+  wall: SceneObject;
 }
 
 interface PlaySceneHudObjects {
@@ -131,11 +139,13 @@ export function createWallballPlayScene(this: PlaySceneContext): void {
   drawCourt.call(this);
   const actors = drawActors.call(this, projection);
   const hud = drawHud.call(this, projection.hud);
+  const feedback = drawFeedback.call(this, projection.feedback);
   const setup = drawSetupControls.call(this, projection.setup);
 
   this.wallballPlay = {
     adapter,
     ball: actors.ball,
+    feedback,
     fielders: actors.fielders,
     hud,
     lastProjectionEventKey: "",
@@ -353,6 +363,24 @@ function drawHud(
   };
 }
 
+function drawFeedback(
+  this: PlaySceneContext,
+  feedback: PlaySceneLoopProjection["feedback"]
+): PlaySceneFeedbackObjects {
+  this.add.rectangle(294, 656, 508, 82, COLORS.hud, 0.58).setStrokeStyle?.(
+    2,
+    COLORS.fielder,
+    0.32
+  );
+
+  return {
+    primary: addFeedbackText.call(this, 52, 622, feedback.primary.text),
+    result: addFeedbackText.call(this, 52, 678, feedbackResultText(feedback)),
+    secondary: addFeedbackText.call(this, 52, 650, feedback.secondary?.text ?? ""),
+    wall: addFeedbackText.call(this, 584, 202, feedback.wall?.text ?? "")
+  };
+}
+
 function drawSetupControls(
   this: PlaySceneContext,
   setup: PlaySceneSetupProjection
@@ -436,6 +464,20 @@ function addCalloutText(
   });
 }
 
+function addFeedbackText(
+  this: PlaySceneContext,
+  x: number,
+  y: number,
+  text: string
+): SceneObject {
+  return this.add.text(x, y, text, {
+    color: "#fffaf0",
+    fontFamily: "Inter, Arial, sans-serif",
+    fontSize: "20px",
+    fontStyle: "bold"
+  });
+}
+
 function bindSetupControl(object: SceneObject, callback: () => void): void {
   object.setInteractive?.();
   object.on?.("pointerdown", callback);
@@ -446,6 +488,7 @@ function renderProjection(
   projection: PlaySceneLoopProjection
 ): void {
   renderHud(runtime.hud, projection.hud);
+  renderFeedback(runtime.feedback, projection.feedback);
   renderSetup(runtime.setup, projection.setup);
   runtime.ball.setPosition?.(
     projection.ball.position.x,
@@ -535,6 +578,10 @@ function projectionEventKey(projection: PlaySceneLoopProjection): string {
     projection.hud.homeScore,
     projection.hud.batterName,
     projection.hud.pitcherName,
+    projection.feedback.primary.text,
+    projection.feedback.secondary?.text ?? "",
+    projection.feedback.result?.text ?? "",
+    projection.feedback.wall?.text ?? "",
     projection.completion?.finalScore ?? "",
     projection.completion?.winnerTeamId ?? ""
   ].join("|");
@@ -570,6 +617,26 @@ function renderHud(
   hud.batter.setText?.(`Batter ${state.batterName}`);
   hud.matchup.setText?.(`${state.pitcherName} vs ${state.batterName}`);
   hud.callout.setText?.(state.calloutText ?? "");
+}
+
+function renderFeedback(
+  feedbackObjects: PlaySceneFeedbackObjects,
+  feedback: PlaySceneLoopProjection["feedback"]
+): void {
+  feedbackObjects.primary.setText?.(feedback.primary.text);
+  feedbackObjects.secondary.setText?.(feedback.secondary?.text ?? "");
+  feedbackObjects.result.setText?.(feedbackResultText(feedback));
+  feedbackObjects.wall.setText?.(feedback.wall?.text ?? "");
+}
+
+function feedbackResultText(
+  feedback: PlaySceneLoopProjection["feedback"]
+): string {
+  if (!feedback.result || feedback.result.text === feedback.primary.text) {
+    return "";
+  }
+
+  return feedback.result.text;
 }
 
 function renderSetup(
