@@ -1,4 +1,5 @@
 import type { Vector2 } from "./ball-physics";
+import { DEFAULT_GAMEPLAY_TUNING } from "../gameplay-tuning";
 import {
   calculateBallResult,
   type BallResult,
@@ -22,7 +23,6 @@ export interface BattingLaunch {
   speed: number;
 }
 
-const MISS_TIMING_MS = 180;
 const QUALITY_SPEEDS: Record<ContactQuality, number> = {
   none: 0,
   weak: 320,
@@ -42,6 +42,7 @@ export function calculateBattingLaunch({
   speedScale = 1,
   ...input
 }: BattingLaunchInput): BattingLaunch {
+  const swingTuning = input.swingTuning ?? DEFAULT_GAMEPLAY_TUNING.swing;
   const result = calculateBallResult(input);
   const speed = round(QUALITY_SPEEDS[result.contactQuality] * speedScale);
 
@@ -56,7 +57,8 @@ export function calculateBattingLaunch({
     };
   }
 
-  const timingPull = clamp(input.swingTimingMs / MISS_TIMING_MS, -1, 1) * 0.45;
+  const timingPull =
+    clamp(input.swingTimingMs / swingTuning.pullTimingMs, -1, 1) * 0.45;
   const pitchOffset = (input.pitchX - input.targetX) * 0.7;
   const lateral = clamp(timingPull + pitchOffset, -0.75, 0.75);
   const forwardShare = Math.max(0.35, 1 - Math.abs(lateral) * 0.4);

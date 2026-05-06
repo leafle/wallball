@@ -5,6 +5,12 @@ import {
 } from "../domain/friend-interactions";
 import type { PlayerProfile, TeamRoster } from "../domain/rosters";
 import type { HalfInning } from "../domain/rules";
+import {
+  createGameplayTuningConfig,
+  type GameplayAssistTuning,
+  type GameplayTuningConfig,
+  type GameplayTuningConfigInput
+} from "../gameplay-tuning";
 import type {
   FieldingInput,
   GameplayControlIntent
@@ -40,6 +46,7 @@ export interface PlaySceneLoopAdapter {
   scoreLimit: number;
   setup: PlaySceneMatchSetupState;
   soloAssist: PlaySceneSoloAssistSettings;
+  tuning: GameplayTuningConfig;
 }
 
 export interface CreatePlaySceneLoopAdapterInput {
@@ -56,6 +63,7 @@ export interface CreatePlaySceneLoopAdapterInput {
   scoreLimit?: number;
   soloAssist?: PlaySceneSoloAssistInput;
   startedAtMs?: number;
+  tuning?: GameplayTuningConfigInput;
 }
 
 export type PlaySceneSoloAssistInput =
@@ -133,22 +141,11 @@ export interface PlaySceneFielderProjection {
 
 const DEFAULT_AWAY_TEAM_ID = "champions";
 const DEFAULT_HOME_TEAM_ID = "woodland";
-const DEFAULT_NEXT_PITCH_DELAY_MS = 640;
-const DEFAULT_PITCH_DURATION_MS = 180;
-const DEFAULT_RECOVERY_DELAY_MS = 300;
-const DEFAULT_SCORE_LIMIT = 3;
-const DEFAULT_MAX_RECOVERY_SPEED = 1_000;
-const DEFAULT_RECOVERY_RADIUS = 600;
 const DEFAULT_FIELD_BOUNDS: FieldBounds = {
   minX: 320,
   maxX: 960,
   minY: 210,
   maxY: 620
-};
-const DEFAULT_SOLO_ASSIST: PlaySceneSoloAssistSettings = {
-  enabled: true,
-  fieldingRecovery: true,
-  pitchDelayMs: DEFAULT_NEXT_PITCH_DELAY_MS
 };
 const EMPTY_FIELDING_INPUT: FieldingInput = {
   axisX: 0,
@@ -185,15 +182,25 @@ export function createPlaySceneLoopAdapter({
   fieldBounds = DEFAULT_FIELD_BOUNDS,
   fielders,
   homeTeamId = DEFAULT_HOME_TEAM_ID,
-  maxRecoverySpeed = DEFAULT_MAX_RECOVERY_SPEED,
-  nextPitchDelayMs = DEFAULT_NEXT_PITCH_DELAY_MS,
-  pitchDurationMs = DEFAULT_PITCH_DURATION_MS,
-  recoveryDelayMs = DEFAULT_RECOVERY_DELAY_MS,
-  recoveryRadius = DEFAULT_RECOVERY_RADIUS,
-  scoreLimit = DEFAULT_SCORE_LIMIT,
-  soloAssist = DEFAULT_SOLO_ASSIST,
-  startedAtMs = 0
+  maxRecoverySpeed,
+  nextPitchDelayMs,
+  pitchDurationMs,
+  recoveryDelayMs,
+  recoveryRadius,
+  scoreLimit,
+  soloAssist,
+  startedAtMs = 0,
+  tuning
 }: CreatePlaySceneLoopAdapterInput = {}): PlaySceneLoopAdapter {
+  const gameplayTuning = createGameplayTuningConfig(tuning);
+  const resolvedNextPitchDelayMs =
+    nextPitchDelayMs ?? gameplayTuning.pitch.nextDelayMs;
+  const resolvedPitchDurationMs = pitchDurationMs ?? gameplayTuning.pitch.durationMs;
+  const resolvedRecoveryDelayMs = recoveryDelayMs ?? gameplayTuning.recovery.delayMs;
+  const resolvedRecoveryRadius = recoveryRadius ?? gameplayTuning.recovery.sceneRadius;
+  const resolvedMaxRecoverySpeed =
+    maxRecoverySpeed ?? gameplayTuning.recovery.sceneMaxBallSpeed;
+  const resolvedScoreLimit = scoreLimit ?? gameplayTuning.scoring.scoreLimit;
   const rosters = loadPredefinedRosters();
   const setup = createPlaySceneMatchSetupState({
     awayTeamId,
@@ -203,7 +210,10 @@ export function createPlaySceneLoopAdapter({
   const awayRoster = findRoster(rosters, setup.awayTeamId);
   const homeRoster = findRoster(rosters, setup.homeTeamId);
   const matchFielders = fielders ?? createDefaultFielders(homeRoster);
-  const soloAssistSettings = normalizeSoloAssist(soloAssist);
+  const soloAssistSettings = normalizeSoloAssist(
+    soloAssist ?? gameplayTuning.assist,
+    gameplayTuning.assist
+  );
 
   return {
     awayRoster,
@@ -216,19 +226,23 @@ export function createPlaySceneLoopAdapter({
       awayRoster,
       homeRoster,
       fielders: matchFielders,
-      maxRecoverySpeed,
-      recoveryRadius,
-      scoreLimit
+      maxRecoverySpeed: resolvedMaxRecoverySpeed,
+      recoveryRadius: resolvedRecoveryRadius,
+      scoreLimit: resolvedScoreLimit,
+      swingTuning: gameplayTuning.swing,
+      wallElapsedMs: gameplayTuning.pitch.wallTravelMs,
+      wallRestitution: gameplayTuning.pitch.wallRestitution
     }),
     nextActionAtMs: soloAssistSettings.enabled
       ? startedAtMs + soloAssistSettings.pitchDelayMs
       : startedAtMs,
-    nextPitchDelayMs,
-    pitchDurationMs,
-    recoveryDelayMs,
-    scoreLimit,
+    nextPitchDelayMs: resolvedNextPitchDelayMs,
+    pitchDurationMs: resolvedPitchDurationMs,
+    recoveryDelayMs: resolvedRecoveryDelayMs,
+    scoreLimit: resolvedScoreLimit,
     setup,
-    soloAssist: soloAssistSettings
+    soloAssist: soloAssistSettings,
+    tuning: gameplayTuning
   };
 }
 
@@ -260,7 +274,8 @@ export function startPlaySceneLoopAdapter(
     recoveryDelayMs: adapter.recoveryDelayMs,
     scoreLimit: adapter.scoreLimit,
     soloAssist: adapter.soloAssist,
-    startedAtMs
+    startedAtMs,
+    tuning: adapter.tuning
   });
 }
 
@@ -730,20 +745,20 @@ function cloneFieldBounds(bounds: FieldBounds): FieldBounds {
 }
 
 function normalizeSoloAssist(
-  input: PlaySceneSoloAssistInput
+  input: PlaySceneSoloAssistInput,
+  defaults: GameplayAssistTuning
 ): PlaySceneSoloAssistSettings {
   if (typeof input === "boolean") {
     return {
-      ...DEFAULT_SOLO_ASSIST,
+      ...defaults,
       enabled: input
     };
   }
 
   return {
-    enabled: input.enabled ?? DEFAULT_SOLO_ASSIST.enabled,
-    fieldingRecovery:
-      input.fieldingRecovery ?? DEFAULT_SOLO_ASSIST.fieldingRecovery,
-    pitchDelayMs: Math.max(0, input.pitchDelayMs ?? DEFAULT_SOLO_ASSIST.pitchDelayMs)
+    enabled: input.enabled ?? defaults.enabled,
+    fieldingRecovery: input.fieldingRecovery ?? defaults.fieldingRecovery,
+    pitchDelayMs: Math.max(0, input.pitchDelayMs ?? defaults.pitchDelayMs)
   };
 }
 

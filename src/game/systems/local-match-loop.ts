@@ -1,6 +1,10 @@
 import type { TeamRoster } from "../domain/rosters";
 import { createBattingOrderFromRosters } from "../domain/rosters";
 import type { Score } from "../domain/rules";
+import {
+  DEFAULT_GAMEPLAY_TUNING,
+  type GameplaySwingTuning
+} from "../gameplay-tuning";
 import type {
   BallPhysicsSnapshot,
   Vector2,
@@ -81,6 +85,7 @@ export interface LocalMatchLoopSettings {
   wallRestitution: number;
   recoveryRadius: number;
   maxRecoverySpeed: number;
+  swingTuning: GameplaySwingTuning;
 }
 
 export interface LocalMatchLoopState {
@@ -106,6 +111,7 @@ export interface CreateLocalMatchLoopStateInput {
   wallRestitution?: number;
   recoveryRadius?: number;
   maxRecoverySpeed?: number;
+  swingTuning?: GameplaySwingTuning;
 }
 
 export interface PitchLocalMatchAction extends LocalPitch {
@@ -167,10 +173,11 @@ export function createLocalMatchLoopState({
   ballStart = DEFAULT_BALL_START,
   wall = DEFAULT_WALL,
   wallTarget = DEFAULT_WALL_TARGET,
-  wallElapsedMs = 600,
-  wallRestitution = 0.75,
-  recoveryRadius = 32,
-  maxRecoverySpeed = 8
+  wallElapsedMs = DEFAULT_GAMEPLAY_TUNING.pitch.wallTravelMs,
+  wallRestitution = DEFAULT_GAMEPLAY_TUNING.pitch.wallRestitution,
+  recoveryRadius = DEFAULT_GAMEPLAY_TUNING.recovery.localRadius,
+  maxRecoverySpeed = DEFAULT_GAMEPLAY_TUNING.recovery.localMaxBallSpeed,
+  swingTuning = DEFAULT_GAMEPLAY_TUNING.swing
 }: CreateLocalMatchLoopStateInput): LocalMatchLoopState {
   const battingOrder = createBattingOrderFromRosters({
     away: awayRoster,
@@ -204,7 +211,8 @@ export function createLocalMatchLoopState({
       wallElapsedMs,
       wallRestitution,
       recoveryRadius,
-      maxRecoverySpeed
+      maxRecoverySpeed,
+      swingTuning: cloneSwingTuning(swingTuning)
     }
   };
 }
@@ -281,6 +289,7 @@ function swingAtPitch(
     swingTimingMs,
     pitchX: state.currentPitch.pitchX,
     targetX: state.currentPitch.targetX,
+    swingTuning: state.settings.swingTuning,
     wallTargetHit: false
   });
   const preliminaryCollision = resolveWallTargetCollision({
@@ -297,6 +306,7 @@ function swingAtPitch(
     swingTimingMs,
     pitchX: state.currentPitch.pitchX,
     targetX: state.currentPitch.targetX,
+    swingTuning: state.settings.swingTuning,
     wallTargetHit: preliminaryCollision.targetHit
   });
   const wallCollision = resolveWallTargetCollision({
@@ -478,6 +488,10 @@ function cloneWallTarget(target: WallTarget): WallTarget {
     width: target.width,
     height: target.height
   };
+}
+
+function cloneSwingTuning(tuning: GameplaySwingTuning): GameplaySwingTuning {
+  return { ...tuning };
 }
 
 function cloneVector(vector: Vector2): Vector2 {

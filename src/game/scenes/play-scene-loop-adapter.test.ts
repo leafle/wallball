@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createGameplayTuningConfig } from "../config";
 import {
   advancePlaySceneLoopAdapter,
   applyPlaySceneControlIntent,
@@ -10,6 +11,60 @@ import {
 } from "./play-scene-loop-adapter";
 
 describe("play scene local loop adapter", () => {
+  it("uses a non-default gameplay tuning config for pitch, recovery, scoring, and assist pacing", () => {
+    const tuning = createGameplayTuningConfig({
+      assist: {
+        pitchDelayMs: 125
+      },
+      pitch: {
+        durationMs: 240,
+        nextDelayMs: 500
+      },
+      recovery: {
+        delayMs: 80,
+        sceneMaxBallSpeed: 500,
+        sceneRadius: 24
+      },
+      scoring: {
+        scoreLimit: 2
+      }
+    });
+    const initial = createPlaySceneLoopAdapter({
+      startedAtMs: 1_000,
+      tuning
+    });
+
+    expect(initial.nextActionAtMs).toBe(1_125);
+    expect(initial.pitchDurationMs).toBe(240);
+    expect(initial.recoveryDelayMs).toBe(80);
+    expect(initial.scoreLimit).toBe(2);
+    expect(initial.loop.flow.scoreLimit).toBe(2);
+    expect(initial.loop.settings.recoveryRadius).toBe(24);
+    expect(initial.loop.settings.maxRecoverySpeed).toBe(500);
+    expect(
+      projectPlaySceneLoopState(advancePlaySceneLoopAdapter(initial, 1_124)).phase
+        .kind
+    ).toBe("ready-for-at-bat");
+
+    const pitched = advancePlaySceneLoopAdapter(initial, 1_125);
+
+    expect(pitched.loop.currentPitch).toMatchObject({
+      idealContactMs: 240,
+      pitchStartedAtMs: 1_125
+    });
+
+    const swung = applyPlaySceneControlIntent(
+      pitched,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_365
+    );
+
+    expect(swung.nextActionAtMs).toBe(1_445);
+  });
+
   it("assists solo play with a deterministic default pitch after the pitch delay", () => {
     const initial = createPlaySceneLoopAdapter({
       pitchDurationMs: 200,

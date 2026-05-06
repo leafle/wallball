@@ -1,7 +1,13 @@
+import {
+  DEFAULT_GAMEPLAY_TUNING,
+  type GameplaySwingTuning
+} from "../gameplay-tuning";
+
 export type BallResultKind = "miss" | "out" | "single" | "double" | "home-run";
 export type ContactQuality = "none" | "weak" | "solid" | "perfect";
 
 export interface BallResultInput {
+  swingTuning?: GameplaySwingTuning;
   swingTimingMs: number;
   pitchX: number;
   targetX: number;
@@ -14,12 +20,8 @@ export interface BallResult {
   launchAngleDegrees: number;
 }
 
-const MISS_TIMING_MS = 180;
-const PERFECT_TIMING_MS = 25;
-const SOLID_TIMING_MS = 100;
-const CENTERED_PITCH_DISTANCE = 0.1;
-
 export function calculateBallResult({
+  swingTuning = DEFAULT_GAMEPLAY_TUNING.swing,
   swingTimingMs,
   pitchX,
   targetX,
@@ -28,7 +30,7 @@ export function calculateBallResult({
   const timingError = Math.abs(swingTimingMs);
   const pitchDistance = Math.abs(pitchX - targetX);
 
-  if (timingError > MISS_TIMING_MS) {
+  if (timingError > swingTuning.missTimingMs) {
     return {
       kind: "miss",
       contactQuality: "none",
@@ -37,8 +39,8 @@ export function calculateBallResult({
   }
 
   if (
-    timingError <= PERFECT_TIMING_MS &&
-    pitchDistance <= CENTERED_PITCH_DISTANCE &&
+    timingError <= swingTuning.perfectTimingMs &&
+    pitchDistance <= swingTuning.centeredPitchDistance &&
     wallTargetHit
   ) {
     return {
@@ -48,7 +50,7 @@ export function calculateBallResult({
     };
   }
 
-  if (timingError <= SOLID_TIMING_MS) {
+  if (timingError <= swingTuning.solidTimingMs) {
     return {
       kind: wallTargetHit ? "double" : "single",
       contactQuality: "solid",
