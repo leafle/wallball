@@ -15,6 +15,13 @@ Apply the initial migration directly:
 dolt sql < server/data/migrations/0001_initial_schema.sql
 ```
 
+Typed access now has two implementations:
+
+- `src/game/data/game-data-client.ts` defines the browser-safe
+  `WallballDataClient` interface and an in-memory fixture fallback.
+- `server/data/dolt-data-client.ts` maps the Dolt schema to the same interface
+  through the local `dolt` CLI for server-side development and tests.
+
 The schema maps to the existing TypeScript data contracts:
 
 - `teams`, `players`, and `team_players` store predefined rosters from
