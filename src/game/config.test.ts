@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BOOT_SCENE_KEY,
   GAME_HEIGHT,
   GAME_WIDTH,
   createBaseGameConfig
 } from "./config";
+import {
+  WALLBALL_PLAY_SCENE_CONFIG,
+  WALLBALL_PLAY_SCENE_KEY
+} from "./scenes/play-scene";
 
 describe("createBaseGameConfig", () => {
   it("uses the fixed 1280 by 720 logical resolution from the design", () => {
@@ -30,14 +33,10 @@ describe("createBaseGameConfig", () => {
     });
   });
 
-  it("registers a visible boot scene for the canvas smoke test", () => {
+  it("registers the visible Wallball play scene for the canvas smoke test", () => {
     const config = createBaseGameConfig();
 
-    expect(config.scene).toEqual([
-      expect.objectContaining({
-        key: BOOT_SCENE_KEY,
-        create: expect.any(Function)
-      })
-    ]);
+    expect(config.scene).toEqual([WALLBALL_PLAY_SCENE_CONFIG]);
+    expect(WALLBALL_PLAY_SCENE_CONFIG.key).toBe(WALLBALL_PLAY_SCENE_KEY);
   });
 });
