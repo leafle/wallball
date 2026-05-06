@@ -1,6 +1,8 @@
 import { GAME_HEIGHT, GAME_WIDTH } from "../dimensions";
+import type { GameplayControlIntent } from "../input/game-controls";
 import {
   advancePlaySceneLoopAdapter,
+  applyPlaySceneControlIntent,
   createPlaySceneLoopAdapter,
   projectPlaySceneLoopState,
   type PlaySceneFielderProjection,
@@ -126,6 +128,21 @@ export function updateWallballPlayScene(
   }
 
   runtime.adapter = advancePlaySceneLoopAdapter(runtime.adapter, timeMs);
+  renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
+}
+
+export function dispatchWallballPlaySceneControlIntent(
+  this: PlaySceneContext,
+  intent: GameplayControlIntent,
+  timeMs: number
+): void {
+  const runtime = this.wallballPlay;
+
+  if (!runtime) {
+    return;
+  }
+
+  runtime.adapter = applyPlaySceneControlIntent(runtime.adapter, intent, timeMs);
   renderProjection(runtime, projectPlaySceneLoopState(runtime.adapter));
 }
 

@@ -104,6 +104,34 @@ describe("local match loop", () => {
       halfInningEnded: true
     });
   });
+
+  it("moves a fielder from directional gameplay input", () => {
+    const state = createTestLoopState();
+    const moved = advanceLocalMatchLoop(state, {
+      type: "move-fielder",
+      fielderId: "al",
+      input: {
+        axisX: 1,
+        axisY: 0
+      },
+      elapsedMs: 500,
+      bounds: {
+        minX: 0,
+        maxX: 1_000,
+        minY: 0,
+        maxY: 700
+      }
+    });
+
+    expect(moved.fielders[0]?.position).toEqual({
+      x: 640,
+      y: 260
+    });
+    expect(state.fielders[0]?.position).toEqual({
+      x: 520,
+      y: 260
+    });
+  });
 });
 
 function createTestLoopState(): LocalMatchLoopState {

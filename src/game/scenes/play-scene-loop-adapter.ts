@@ -2,12 +2,16 @@ import { loadPredefinedRosters } from "../data/fixtures";
 import type { PlayerProfile, TeamRoster } from "../domain/rosters";
 import type { HalfInning } from "../domain/rules";
 import type {
+  FieldingInput,
+  GameplayControlIntent
+} from "../input/game-controls";
+import type {
   BallPhysicsSnapshot,
   Vector2,
   WallTarget
 } from "../systems/ball-physics";
 import type { BallResultKind } from "../systems/ball-results";
-import type { Fielder } from "../systems/fielding";
+import type { FieldBounds, Fielder } from "../systems/fielding";
 import {
   advanceLocalMatchLoop,
   createLocalMatchLoopState,
@@ -17,7 +21,11 @@ import {
 
 export interface PlaySceneLoopAdapter {
   awayRoster: TeamRoster;
+  controlledFielderId: string | null;
+  fieldBounds: FieldBounds;
+  fieldingInput: FieldingInput;
   homeRoster: TeamRoster;
+  lastAdvancedAtMs: number;
   loop: LocalMatchLoopState;
   nextActionAtMs: number;
   nextPitchDelayMs: number;
@@ -27,6 +35,8 @@ export interface PlaySceneLoopAdapter {
 
 export interface CreatePlaySceneLoopAdapterInput {
   awayTeamId?: string;
+  controlledFielderId?: string;
+  fieldBounds?: FieldBounds;
   fielders?: readonly Fielder[];
   homeTeamId?: string;
   nextPitchDelayMs?: number;
@@ -67,6 +77,16 @@ const DEFAULT_HOME_TEAM_ID = "woodland";
 const DEFAULT_NEXT_PITCH_DELAY_MS = 640;
 const DEFAULT_PITCH_DURATION_MS = 180;
 const DEFAULT_RECOVERY_DELAY_MS = 300;
+const DEFAULT_FIELD_BOUNDS: FieldBounds = {
+  minX: 320,
+  maxX: 960,
+  minY: 210,
+  maxY: 620
+};
+const EMPTY_FIELDING_INPUT: FieldingInput = {
+  axisX: 0,
+  axisY: 0
+};
 
 const DEFAULT_FIELDERS: readonly Fielder[] = [
   {
@@ -97,6 +117,8 @@ const DEFAULT_FIELDERS: readonly Fielder[] = [
 
 export function createPlaySceneLoopAdapter({
   awayTeamId = DEFAULT_AWAY_TEAM_ID,
+  controlledFielderId,
+  fieldBounds = DEFAULT_FIELD_BOUNDS,
   fielders = DEFAULT_FIELDERS,
   homeTeamId = DEFAULT_HOME_TEAM_ID,
   nextPitchDelayMs = DEFAULT_NEXT_PITCH_DELAY_MS,
@@ -110,7 +132,11 @@ export function createPlaySceneLoopAdapter({
 
   return {
     awayRoster,
+    controlledFielderId: controlledFielderId ?? fielders[0]?.id ?? null,
+    fieldBounds: cloneFieldBounds(fieldBounds),
+    fieldingInput: cloneFieldingInput(EMPTY_FIELDING_INPUT),
     homeRoster,
+    lastAdvancedAtMs: startedAtMs,
     loop: createLocalMatchLoopState({
       awayRoster,
       homeRoster,
@@ -129,15 +155,53 @@ export function advancePlaySceneLoopAdapter(
   adapter: PlaySceneLoopAdapter,
   timeMs: number
 ): PlaySceneLoopAdapter {
-  let nextAdapter = adapter;
-  let actionsApplied = 0;
+  const movedAdapter = moveControlledFielder(adapter, timeMs);
 
-  while (timeMs >= nextAdapter.nextActionAtMs && actionsApplied < 3) {
-    nextAdapter = advanceNextLoopAction(nextAdapter);
-    actionsApplied += 1;
+  if (
+    movedAdapter.loop.phase.kind !== "awaiting-recovery" ||
+    timeMs < movedAdapter.nextActionAtMs
+  ) {
+    return movedAdapter;
   }
 
-  return nextAdapter;
+  const recoveredLoop = advanceLocalMatchLoop(movedAdapter.loop, {
+    type: "recover-ball"
+  });
+
+  return {
+    ...movedAdapter,
+    loop: recoveredLoop,
+    nextActionAtMs:
+      recoveredLoop.phase.kind === "awaiting-recovery"
+        ? timeMs + movedAdapter.recoveryDelayMs
+        : timeMs + movedAdapter.nextPitchDelayMs
+  };
+}
+
+export function applyPlaySceneControlIntent(
+  adapter: PlaySceneLoopAdapter,
+  intent: GameplayControlIntent,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  const current = advancePlaySceneLoopAdapter(adapter, timeMs);
+
+  if (intent.kind === "fielder-move") {
+    return {
+      ...current,
+      controlledFielderId:
+        current.controlledFielderId ?? current.loop.fielders[0]?.id ?? null,
+      fieldingInput: {
+        axisX: intent.axisX,
+        axisY: intent.axisY
+      }
+    };
+  }
+
+  if (intent.kind === "pitch") {
+    return applyPitchControl(current, timeMs);
+  }
+
+  return applySwingControl(current, timeMs);
 }
 
 export function projectPlaySceneLoopState(
@@ -181,50 +245,77 @@ export function projectPlaySceneLoopState(
   };
 }
 
-function advanceNextLoopAction(
-  adapter: PlaySceneLoopAdapter
+function applyPitchControl(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
 ): PlaySceneLoopAdapter {
-  if (adapter.loop.phase.kind === "ready-for-at-bat") {
-    return {
-      ...adapter,
-      loop: advanceLocalMatchLoop(adapter.loop, {
-        type: "pitch",
-        idealContactMs: adapter.pitchDurationMs,
-        pitchStartedAtMs: adapter.nextActionAtMs,
-        pitchX: 0,
-        targetX: 0
-      }),
-      nextActionAtMs: adapter.nextActionAtMs + adapter.pitchDurationMs
-    };
-  }
-
-  if (adapter.loop.phase.kind === "pitch-in-flight") {
-    const pitch = adapter.loop.currentPitch;
-
-    if (!pitch) {
-      return {
-        ...adapter,
-        nextActionAtMs: adapter.nextActionAtMs + adapter.recoveryDelayMs
-      };
-    }
-
-    return {
-      ...adapter,
-      loop: advanceLocalMatchLoop(adapter.loop, {
-        type: "swing",
-        swingAtMs: pitch.pitchStartedAtMs + pitch.idealContactMs
-      }),
-      nextActionAtMs: adapter.nextActionAtMs + adapter.recoveryDelayMs
-    };
+  if (adapter.loop.phase.kind !== "ready-for-at-bat") {
+    return adapter;
   }
 
   return {
     ...adapter,
     loop: advanceLocalMatchLoop(adapter.loop, {
-      type: "recover-ball"
+      type: "pitch",
+      idealContactMs: adapter.pitchDurationMs,
+      pitchStartedAtMs: timeMs,
+      pitchX: 0,
+      targetX: 0
     }),
-    nextActionAtMs: adapter.nextActionAtMs + adapter.nextPitchDelayMs
+    nextActionAtMs: timeMs + adapter.pitchDurationMs
   };
+}
+
+function applySwingControl(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  if (adapter.loop.phase.kind !== "pitch-in-flight") {
+    return adapter;
+  }
+
+  return {
+    ...adapter,
+    loop: advanceLocalMatchLoop(adapter.loop, {
+      type: "swing",
+      swingAtMs: timeMs
+    }),
+    nextActionAtMs: timeMs + adapter.recoveryDelayMs
+  };
+}
+
+function moveControlledFielder(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  const elapsedMs = Math.max(0, timeMs - adapter.lastAdvancedAtMs);
+  const nextAdapter = {
+    ...adapter,
+    lastAdvancedAtMs: Math.max(adapter.lastAdvancedAtMs, timeMs)
+  };
+
+  if (
+    elapsedMs === 0 ||
+    !adapter.controlledFielderId ||
+    isIdleFieldingInput(adapter.fieldingInput)
+  ) {
+    return nextAdapter;
+  }
+
+  return {
+    ...nextAdapter,
+    loop: advanceLocalMatchLoop(adapter.loop, {
+      type: "move-fielder",
+      fielderId: adapter.controlledFielderId,
+      input: adapter.fieldingInput,
+      elapsedMs,
+      bounds: adapter.fieldBounds
+    })
+  };
+}
+
+function isIdleFieldingInput(input: FieldingInput): boolean {
+  return input.axisX === 0 && input.axisY === 0;
 }
 
 function findRoster(rosters: TeamRoster[], teamId: string): TeamRoster {
@@ -270,5 +361,21 @@ function cloneVector(vector: Vector2): Vector2 {
   return {
     x: vector.x,
     y: vector.y
+  };
+}
+
+function cloneFieldingInput(input: FieldingInput): FieldingInput {
+  return {
+    axisX: input.axisX,
+    axisY: input.axisY
+  };
+}
+
+function cloneFieldBounds(bounds: FieldBounds): FieldBounds {
+  return {
+    minX: bounds.minX,
+    maxX: bounds.maxX,
+    minY: bounds.minY,
+    maxY: bounds.maxY
   };
 }

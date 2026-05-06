@@ -5,7 +5,10 @@ import {
   mountTouchGameplayControls,
   type GameplayControlIntent
 } from "./game/input/game-controls";
-import { mountPhaserGameShell } from "./game/phaser-shell";
+import {
+  mountPhaserGameShell,
+  type MountedPhaserGameShell
+} from "./game/phaser-shell";
 import { createRemoteRoomClient } from "./game/remote/room-client";
 import { mountBattingPrototype } from "./game/ui/batting-prototype";
 import type {
@@ -41,6 +44,7 @@ const remoteState: RemoteUiState = {
   snapshot: null,
   unsubscribe: null
 };
+let phaserShell: MountedPhaserGameShell | null = null;
 
 const rosterOptions = rosters
   .map((team) => `<option value="${team.id}">${team.displayName}</option>`)
@@ -164,7 +168,11 @@ const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
 
-void mountPhaserGameShell().catch(reportError);
+void mountPhaserGameShell()
+  .then((mounted) => {
+    phaserShell = mounted;
+  })
+  .catch(reportError);
 mountBattingPrototype(getElement<HTMLDivElement>(`#${battingPrototypeParent}`));
 void mountKeyboardGameplayControls(window, handleGameplayControlIntent);
 void mountTouchGameplayControls(remoteConsoleElement, handleGameplayControlIntent);
@@ -237,6 +245,8 @@ function bindIntentButton(
 }
 
 function handleGameplayControlIntent(intent: GameplayControlIntent): void {
+  phaserShell?.dispatchControlIntent(intent);
+
   if (intent.kind === "pitch") {
     void sendIntent("pitch", {
       targetX: GAME_WIDTH / 2,

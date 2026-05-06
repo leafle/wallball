@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createWallballPlayScene,
+  dispatchWallballPlaySceneControlIntent,
   updateWallballPlayScene
 } from "./play-scene";
 
@@ -86,11 +87,27 @@ describe("createWallballPlayScene", () => {
     );
   });
 
-  it("advances the deterministic loop on update and refreshes the HUD", () => {
+  it("dispatches gameplay controls into the local loop and refreshes the HUD", () => {
     const calls: DrawCall[] = [];
     const scene = createFakeSceneContext(calls);
 
     createWallballPlayScene.call(scene);
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
     updateWallballPlayScene.call(scene, 1_500, 0);
 
     expect(calls).toEqual(

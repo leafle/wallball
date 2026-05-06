@@ -14,8 +14,13 @@ import {
   type BattingLaunch
 } from "./batting";
 import type { BallResult, BallResultKind } from "./ball-results";
-import type { BallRecovery, Fielder } from "./fielding";
-import { resolveBallRecovery } from "./fielding";
+import type {
+  BallRecovery,
+  FieldBounds,
+  FieldingInput,
+  Fielder
+} from "./fielding";
+import { moveFielder, resolveBallRecovery } from "./fielding";
 import type { MatchFlowState, PlateAppearanceUpdate } from "./match-flow";
 import {
   applyPlateAppearance,
@@ -104,10 +109,19 @@ export interface RecoverBallLocalMatchAction {
   type: "recover-ball";
 }
 
+export interface MoveFielderLocalMatchAction {
+  type: "move-fielder";
+  fielderId: string;
+  input: FieldingInput;
+  elapsedMs: number;
+  bounds: FieldBounds;
+}
+
 export type LocalMatchLoopAction =
   | PitchLocalMatchAction
   | SwingLocalMatchAction
-  | RecoverBallLocalMatchAction;
+  | RecoverBallLocalMatchAction
+  | MoveFielderLocalMatchAction;
 
 const DEFAULT_BALL_START: Vector2 = {
   x: 520,
@@ -191,6 +205,10 @@ export function advanceLocalMatchLoop(
 
   if (action.type === "swing") {
     return swingAtPitch(state, action);
+  }
+
+  if (action.type === "move-fielder") {
+    return moveLocalFielder(state, action);
   }
 
   return recoverBall(state);
@@ -329,6 +347,40 @@ function recoverBall(state: LocalMatchLoopState): LocalMatchLoopState {
   }
 
   return finishPlateAppearance(state, state.lastPlay.ballResult.kind, recovery);
+}
+
+function moveLocalFielder(
+  state: LocalMatchLoopState,
+  action: MoveFielderLocalMatchAction
+): LocalMatchLoopState {
+  if (action.elapsedMs <= 0) {
+    return state;
+  }
+
+  let fielderMoved = false;
+  const fielders = state.fielders.map((fielder) => {
+    if (fielder.id !== action.fielderId) {
+      return fielder;
+    }
+
+    fielderMoved = true;
+
+    return moveFielder({
+      fielder,
+      input: action.input,
+      elapsedMs: action.elapsedMs,
+      bounds: action.bounds
+    });
+  });
+
+  if (!fielderMoved) {
+    return state;
+  }
+
+  return {
+    ...state,
+    fielders
+  };
 }
 
 function finishPlateAppearance(
