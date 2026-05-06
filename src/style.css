@@ -73,6 +73,11 @@ select {
   min-width: 0;
 }
 
+.game-stage-grid {
+  display: grid;
+  gap: 16px;
+}
+
 .title-row {
   display: flex;
   align-items: end;
@@ -122,6 +127,16 @@ label {
     linear-gradient(rgb(246 242 232 / 0.08) 1px, transparent 1px),
     #20211d;
   background-size: 40px 40px;
+}
+
+.phaser-host {
+  background: #101820;
+}
+
+.phaser-host canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .batting-lab {

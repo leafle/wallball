@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOOT_SCENE_KEY,
   GAME_HEIGHT,
   GAME_WIDTH,
   createBaseGameConfig
@@ -17,16 +18,26 @@ describe("createBaseGameConfig", () => {
     expect(config.height).toBe(GAME_HEIGHT);
   });
 
-  it("sets up the Phaser host without instantiating the game shell yet", () => {
+  it("sets up the Phaser host with responsive scaling", () => {
     expect(createBaseGameConfig()).toMatchObject({
       parent: "game",
       backgroundColor: "#101820",
       type: 0,
-      scene: [],
       scale: {
         mode: 3,
         autoCenter: 1
       }
     });
+  });
+
+  it("registers a visible boot scene for the canvas smoke test", () => {
+    const config = createBaseGameConfig();
+
+    expect(config.scene).toEqual([
+      expect.objectContaining({
+        key: BOOT_SCENE_KEY,
+        create: expect.any(Function)
+      })
+    ]);
   });
 });

@@ -5,6 +5,7 @@ import {
   mountTouchGameplayControls,
   type GameplayControlIntent
 } from "./game/input/game-controls";
+import { mountPhaserGameShell } from "./game/phaser-shell";
 import { createRemoteRoomClient } from "./game/remote/room-client";
 import { mountBattingPrototype } from "./game/ui/batting-prototype";
 import type {
@@ -23,6 +24,7 @@ if (!app) {
 }
 
 const config = createBaseGameConfig();
+const battingPrototypeParent = "batting-prototype";
 const rosters = loadPredefinedRosters();
 const remoteClient = createRemoteRoomClient();
 
@@ -54,12 +56,21 @@ app.innerHTML = `
         </div>
         <span class="resolution-pill">${GAME_WIDTH} x ${GAME_HEIGHT}</span>
       </div>
-      <div
-        id="${config.parent}"
-        class="game-host"
-        data-width="${String(config.width)}"
-        data-height="${String(config.height)}"
-      ></div>
+      <div class="game-stage-grid">
+        <div
+          id="${config.parent}"
+          class="game-host phaser-host"
+          data-role="phaser-shell"
+          data-width="${String(config.width)}"
+          data-height="${String(config.height)}"
+        ></div>
+        <div
+          id="${battingPrototypeParent}"
+          class="game-host prototype-host"
+          data-width="${String(config.width)}"
+          data-height="${String(config.height)}"
+        ></div>
+      </div>
     </section>
     <section id="remote-console" class="remote-console" aria-label="Remote two-player controls">
       <div class="connection-grid">
@@ -153,7 +164,8 @@ const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
 
-mountBattingPrototype(getElement<HTMLDivElement>(`#${String(config.parent)}`));
+void mountPhaserGameShell().catch(reportError);
+mountBattingPrototype(getElement<HTMLDivElement>(`#${battingPrototypeParent}`));
 void mountKeyboardGameplayControls(window, handleGameplayControlIntent);
 void mountTouchGameplayControls(remoteConsoleElement, handleGameplayControlIntent);
 
