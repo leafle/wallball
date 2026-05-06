@@ -10,6 +10,12 @@ import {
   type GameplayControlIntent
 } from "../input/game-controls";
 import type { Vector2 } from "../systems/ball-physics";
+import {
+  calculateWallFacingPitchPosition,
+  createWallFacingCameraFrame,
+  createWallFacingCameraStyle,
+  type FramePoint
+} from "./wall-facing-camera";
 
 type PrototypePhase = "idle" | "pitching" | "launched";
 
@@ -28,12 +34,10 @@ const IDEAL_CONTACT_MS = 900;
 const PITCH_DURATION_MS = 1_200;
 const LAUNCH_RESET_MS = 1_700;
 const PITCH_LANES = [-0.22, 0.04, 0.18, -0.08] as const;
-const PITCHER_POSITION: Vector2 = {
-  x: GAME_WIDTH / 2,
-  y: 635
-};
-const CONTACT_Y = 470;
+const CAMERA_FRAME = createWallFacingCameraFrame();
+const PITCHER_POSITION = toLogicalPoint(CAMERA_FRAME.pitchPath.from);
 const LANE_WIDTH = 360;
+const LANE_WIDTH_PERCENT = (LANE_WIDTH / GAME_WIDTH) * 100;
 
 export function mountBattingPrototype(host: HTMLElement): () => void {
   const state: PrototypeState = {
@@ -47,29 +51,7 @@ export function mountBattingPrototype(host: HTMLElement): () => void {
     pitchX: PITCH_LANES[0]
   };
 
-  host.innerHTML = `
-    <div class="batting-lab" aria-label="Batting timing prototype">
-      <div class="prototype-hud" aria-live="polite">
-        <span data-role="phase">Ready</span>
-        <span data-role="timing">Timing 0 ms</span>
-        <span data-role="result">No pitch</span>
-      </div>
-      <div class="wall-zone">
-        <div class="wall-target"></div>
-      </div>
-      <div class="pitcher-marker"></div>
-      <div class="batter-marker"></div>
-      <div class="timing-meter" aria-hidden="true">
-        <div class="timing-sweet-spot"></div>
-        <div class="timing-cursor" data-role="timing-cursor"></div>
-      </div>
-      <div class="prototype-ball" data-role="ball"></div>
-      <div class="prototype-controls">
-        <button type="button" data-control-action="pitch">Pitch</button>
-        <button type="button" data-control-action="swing">Swing</button>
-      </div>
-    </div>
-  `;
+  host.innerHTML = renderBattingPrototypeMarkup();
 
   const lab = getElement<HTMLElement>(host, ".batting-lab");
   const ball = getElement<HTMLElement>(host, "[data-role='ball']");
@@ -196,6 +178,31 @@ export function mountBattingPrototype(host: HTMLElement): () => void {
   };
 }
 
+export function renderBattingPrototypeMarkup(): string {
+  return `
+    <div class="batting-lab" style="${createWallFacingCameraStyle(CAMERA_FRAME)}" aria-label="Batting timing prototype">
+      <div class="prototype-hud" aria-live="polite">
+        <span data-role="phase">Ready</span>
+        <span data-role="timing">Timing 0 ms</span>
+        <span data-role="result">No pitch</span>
+      </div>
+      <div class="wall-zone" aria-hidden="true"></div>
+      <div class="wall-target" aria-hidden="true"></div>
+      <div class="camera-depth-lines" aria-hidden="true"></div>
+      <div class="active-play-corridor" aria-hidden="true"></div>
+      <div class="pitcher-marker"></div>
+      <div class="batter-marker"></div>
+      <div class="timing-meter" aria-hidden="true">
+        <div class="timing-sweet-spot"></div>
+        <div class="timing-cursor" data-role="timing-cursor"></div>
+      </div>
+      <div class="prototype-ball" data-role="ball"></div>
+      <button type="button" class="control-zone control-zone-pitch" data-control-action="pitch">Pitch</button>
+      <button type="button" class="control-zone control-zone-swing" data-control-action="swing">Swing</button>
+    </div>
+  `;
+}
+
 function currentPitchPosition(
   state: PrototypeState,
   nowMs: number
@@ -205,10 +212,14 @@ function currentPitchPosition(
       ? clamp((nowMs - state.pitchStartedAtMs) / PITCH_DURATION_MS, 0, 1)
       : 0;
 
-  return {
-    x: PITCHER_POSITION.x + state.pitchX * LANE_WIDTH,
-    y: PITCHER_POSITION.y + (CONTACT_Y - PITCHER_POSITION.y) * progress
-  };
+  return toLogicalPoint(
+    calculateWallFacingPitchPosition({
+      frame: CAMERA_FRAME,
+      laneOffset: state.pitchX,
+      laneWidthPercent: LANE_WIDTH_PERCENT,
+      progress
+    })
+  );
 }
 
 function setBallPosition(ball: HTMLElement, position: Vector2): void {
@@ -218,6 +229,13 @@ function setBallPosition(ball: HTMLElement, position: Vector2): void {
 
 function setTimingCursor(cursor: HTMLElement, progress: number): void {
   cursor.style.transform = `translateX(${round(clamp(progress, 0, 1) * 100)}%)`;
+}
+
+function toLogicalPoint(point: FramePoint): Vector2 {
+  return {
+    x: (point.xPercent / 100) * GAME_WIDTH,
+    y: (point.yPercent / 100) * GAME_HEIGHT
+  };
 }
 
 function formatTiming(value: number): string {
