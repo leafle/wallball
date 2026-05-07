@@ -249,6 +249,7 @@ label {
 
 .post-match-panel,
 .local-event-panel,
+.local-series-panel,
 .match-history-panel {
   display: grid;
   align-content: start;
@@ -349,6 +350,116 @@ label {
   color: #d8d1c0;
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.local-series-panel {
+  gap: 12px;
+}
+
+.local-series-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.local-series-header h2 {
+  margin: 0 0 4px;
+}
+
+.local-series-header p {
+  margin: 0;
+  color: #d8d1c0;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.local-series-status {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border: 1px solid #4cb7a5;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: #10100f;
+  background: #4cb7a5;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.local-series-score {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.28rem;
+  font-weight: 900;
+  line-height: 1.08;
+}
+
+.local-series-next,
+.local-series-winner {
+  margin: 0;
+  color: #d8d1c0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.local-series-winner {
+  color: #f5c84b;
+}
+
+.local-series-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.local-series-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.local-series-meta dt {
+  color: #a9aa9f;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.local-series-meta dd {
+  margin: 0;
+  color: #fffaf0;
+  font-weight: 800;
+}
+
+.local-series-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.local-series-actions button {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.local-series-target {
+  grid-template-columns: auto minmax(56px, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #505849;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #292b26;
+  color: #d8d1c0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.local-series-target input {
+  min-height: 28px;
+  padding: 0 6px;
 }
 
 .post-match-header {
@@ -1204,6 +1315,7 @@ label {
 
   .post-match-panel,
   .local-event-panel,
+  .local-series-panel,
   .match-history-panel {
     max-height: 42svh;
     overflow: auto;

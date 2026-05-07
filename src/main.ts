@@ -9,6 +9,16 @@ import {
 import { loadPredefinedRosters } from "./game/data/fixtures";
 import type { InteractionCallout } from "./game/domain/friend-interactions";
 import type { HighScore } from "./game/domain/high-scores";
+import {
+  clearLocalSeriesState,
+  createLocalSeries,
+  loadLocalSeriesState,
+  projectLocalSeriesPanel,
+  saveLocalSeriesState,
+  updateLocalSeriesFromCompletedMatch,
+  type LocalSeries,
+  type LocalSeriesPanelProjection
+} from "./game/domain/local-series";
 import type { CompletedMatch, MatchSummary } from "./game/domain/match-summary";
 import {
   getGameplayControlHelpItems,
@@ -77,9 +87,12 @@ const appElement = app;
 const battingPrototypeParent = "batting-prototype";
 const controlHelpParent = "control-help";
 const gameplayPreferencesParent = "gameplay-preferences";
+const localSeriesParent = "local-series";
 const localMatchEventsParent = "local-match-events";
 const postMatchResultsParent = "post-match-results";
 const matchHistoryParent = "match-history";
+const defaultLocalSeriesTargetWins = 3;
+const maxLocalSeriesTargetWins = 9;
 const localRivalryMatchup = {
   batterId: "cainer",
   pitcherId: "al"
@@ -88,6 +101,10 @@ const localRivalryPlayerIds = ["cainer", "al"] as const;
 const localRivalryTeamIds = ["champions", "woodland"] as const;
 const rosters = loadPredefinedRosters();
 const validGameplayPreferenceTeamIds = rosters.map((roster) => roster.id);
+const localSeriesTeamLabels = rosters.map(({ displayName, id }) => ({
+  displayName,
+  id
+}));
 const config = createBaseGameConfig();
 const localDataClient = createResilientWallballDataClient({
   primary: createFixtureWallballDataClient()
@@ -176,6 +193,9 @@ let phaserShell: MountedPhaserGameShell | null = null;
 let gameplayPreferences = loadGameplayPreferences({
   validTeamIds: validGameplayPreferenceTeamIds
 });
+let localSeries: LocalSeries | null = loadLocalSeriesState({
+  validTeamIds: validGameplayPreferenceTeamIds
+});
 
 const rosterOptions = rosters
   .map((team) => `<option value="${team.id}">${team.displayName}</option>`)
@@ -206,6 +226,12 @@ appElement.innerHTML = `
             data-height="${String(config.height)}"
           ></div>
           <div class="local-side-panel">
+            <aside
+              id="${localSeriesParent}"
+              class="local-series-panel"
+              aria-live="polite"
+              aria-label="Local mini-series"
+            ></aside>
             <aside
               id="${postMatchResultsParent}"
               class="post-match-panel"
@@ -334,6 +360,7 @@ const controlHelpElement = getElement<HTMLElement>(`#${controlHelpParent}`);
 const gameplayPreferencesElement = getElement<HTMLElement>(
   `#${gameplayPreferencesParent}`
 );
+const localSeriesElement = getElement<HTMLElement>(`#${localSeriesParent}`);
 const postMatchResultsElement = getElement<HTMLElement>(
   `#${postMatchResultsParent}`
 );
@@ -410,6 +437,10 @@ gameplayPreferencesElement.addEventListener("click", (event) => {
   }
 });
 
+localSeriesElement.addEventListener("click", (event) => {
+  handleLocalSeriesAction(event);
+});
+
 awayTeamSelect.addEventListener("change", () => {
   commitGameplayPreferencePatch({
     preferredMatchup: {
@@ -428,6 +459,7 @@ homeTeamSelect.addEventListener("change", () => {
 
 renderRemoteState();
 applyGameplayPreferencesToUi();
+renderLocalSeriesPanel();
 renderLocalResultsPanel();
 renderLocalEventPanel();
 renderMatchHistoryPanel();
@@ -561,6 +593,7 @@ async function initializeLocalDataPanels(
     id
   }));
   await refreshLocalHistoryPanel(dataClient);
+  renderLocalSeriesPanel();
   renderLocalResultsPanel();
   renderLocalEventPanel();
 }
@@ -645,6 +678,21 @@ async function handlePlaySceneProjection(
     localResultsState.recordState = "recorded";
     localResultsState.summary = recorded.summary;
     localEventState.summary = recorded.summary;
+
+    if (localSeries) {
+      const nextSeries = updateLocalSeriesFromCompletedMatch(
+        localSeries,
+        recorded.match
+      );
+
+      if (nextSeries !== localSeries) {
+        localSeries = nextSeries;
+        saveLocalSeriesState(localSeries, {
+          validTeamIds: validGameplayPreferenceTeamIds
+        });
+      }
+    }
+
     await refreshLocalHistoryPanel(localDataClient);
   } catch (error) {
     if (localResultsState.activeCompletionKey !== completionKey) {
@@ -661,7 +709,160 @@ async function handlePlaySceneProjection(
 
     renderLocalResultsPanel();
     renderLocalEventPanel();
+    renderLocalSeriesPanel();
   }
+}
+
+function renderLocalSeriesPanel(): void {
+  renderLocalSeriesPanelProjection(
+    projectLocalSeriesPanel({
+      selectedMatchup: gameplayPreferences.preferredMatchup,
+      series: localSeries,
+      teams: localSeriesTeamLabels
+    })
+  );
+}
+
+function renderLocalSeriesPanelProjection(
+  panel: LocalSeriesPanelProjection
+): void {
+  localSeriesElement.innerHTML = `
+    <div class="local-series-header">
+      <div>
+        <h2>${escapeHtml(panel.title)}</h2>
+        <p>${escapeHtml(panel.statusLabel)}</p>
+      </div>
+      <span class="local-series-status">${escapeHtml(panel.modeLabel)}</span>
+    </div>
+    <p class="local-series-score">${escapeHtml(panel.scoreLabel)}</p>
+    <p class="local-series-next">${escapeHtml(panel.nextMatchLabel)}</p>
+    <p class="local-series-winner">${escapeHtml(panel.winnerLabel)}</p>
+    <dl class="local-series-meta">
+      ${panel.detailRows
+        .map(
+          (row) => `
+            <div>
+              <dt>${escapeHtml(row.label)}</dt>
+              <dd>${escapeHtml(row.value)}</dd>
+            </div>
+          `
+        )
+        .join("")}
+    </dl>
+    <div class="local-series-actions">
+      ${renderLocalSeriesActions(panel)}
+    </div>
+  `;
+}
+
+function renderLocalSeriesActions(panel: LocalSeriesPanelProjection): string {
+  if (!localSeries || panel.completed) {
+    return `
+      <button type="button" data-local-series-action="best-of-three">
+        Best of 3
+      </button>
+      <label class="local-series-target">
+        First to
+        <input
+          type="number"
+          min="1"
+          max="${String(maxLocalSeriesTargetWins)}"
+          value="${String(defaultLocalSeriesTargetWins)}"
+          data-local-series-target
+        />
+      </label>
+      <button type="button" data-local-series-action="first-to">
+        Start
+      </button>
+      ${
+        panel.canReset
+          ? `<button type="button" data-local-series-action="reset">Reset</button>`
+          : ""
+      }
+    `;
+  }
+
+  return `
+    <button type="button" data-local-series-action="setup-next">
+      Set up next
+    </button>
+    <button type="button" data-local-series-action="reset">Reset</button>
+  `;
+}
+
+function handleLocalSeriesAction(event: Event): void {
+  const action =
+    event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-local-series-action]")?.dataset
+          .localSeriesAction
+      : undefined;
+
+  if (action === "best-of-three") {
+    startLocalSeries("best-of-three");
+  } else if (action === "first-to") {
+    startLocalSeries("first-to");
+  } else if (action === "setup-next") {
+    setupNextLocalSeriesMatch();
+  } else if (action === "reset") {
+    resetLocalSeries();
+  }
+}
+
+function startLocalSeries(format: "best-of-three" | "first-to"): void {
+  const targetWins =
+    format === "first-to"
+      ? readLocalSeriesTargetWins()
+      : defaultLocalSeriesTargetWins;
+
+  localSeries = createLocalSeries({
+    awayTeamId: gameplayPreferences.preferredMatchup.awayTeamId,
+    format,
+    homeTeamId: gameplayPreferences.preferredMatchup.homeTeamId,
+    id: `local-series-${Date.now()}`,
+    startedAt: new Date().toISOString(),
+    targetWins
+  });
+  saveLocalSeriesState(localSeries, {
+    validTeamIds: validGameplayPreferenceTeamIds
+  });
+  renderLocalSeriesPanel();
+}
+
+function setupNextLocalSeriesMatch(): void {
+  if (!localSeries) {
+    return;
+  }
+
+  commitGameplayPreferencePatch({
+    preferredMatchup: {
+      awayTeamId: localSeries.awayTeamId,
+      homeTeamId: localSeries.homeTeamId
+    }
+  });
+  phaserShell?.dispatchControlIntent({
+    kind: "restart",
+    source: "touch"
+  });
+  renderLocalSeriesPanel();
+}
+
+function resetLocalSeries(): void {
+  localSeries = null;
+  clearLocalSeriesState();
+  renderLocalSeriesPanel();
+}
+
+function readLocalSeriesTargetWins(): number {
+  const targetInput = localSeriesElement.querySelector<HTMLInputElement>(
+    "[data-local-series-target]"
+  );
+  const parsed = Number.parseInt(targetInput?.value ?? "", 10);
+
+  if (!Number.isFinite(parsed)) {
+    return defaultLocalSeriesTargetWins;
+  }
+
+  return Math.min(maxLocalSeriesTargetWins, Math.max(1, parsed));
 }
 
 function renderMatchHistoryPanel(): void {
@@ -1081,6 +1282,7 @@ function applyGameplayPreferencesToUi(): void {
   syncRemoteMatchupControls();
   renderGameplayPreferencesPanel();
   renderControlHelpPanel();
+  renderLocalSeriesPanel();
 }
 
 function syncRemoteMatchupControls(): void {
