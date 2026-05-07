@@ -21,6 +21,11 @@ import {
   type PlaySceneSetupProjection,
   type PlaySceneSetupSide
 } from "./play-scene-loop-adapter";
+import {
+  createGeneratedToneAudioOutput,
+  LocalMatchAudioCueController,
+  type LocalMatchAudioCueOutput
+} from "../systems/local-match-audio";
 import type { LocalMatchLoopState } from "../systems/local-match-loop";
 
 export const WALLBALL_PLAY_SCENE_KEY = "wallball-play";
@@ -76,6 +81,7 @@ interface PlaySceneContext {
 
 interface PlaySceneRuntime {
   adapter: PlaySceneLoopAdapter;
+  audio: LocalMatchAudioCueController;
   ball: SceneObject;
   feedback: PlaySceneFeedbackObjects;
   feedbackIntensity: PlaySceneFeedbackIntensity;
@@ -121,6 +127,7 @@ interface PlaySceneSetupObjects {
 }
 
 export interface WallballPlaySceneOptions {
+  audioOutput?: LocalMatchAudioCueOutput;
   preferences?: GameplayPreferences;
 }
 
@@ -163,6 +170,13 @@ export function createWallballPlayScene(
   );
   const projection = projectPlaySceneLoopState(adapter);
   const feedbackIntensity = feedbackIntensityFromPreferences(options.preferences);
+  const audio = new LocalMatchAudioCueController(
+    options.audioOutput ?? createGeneratedToneAudioOutput(),
+    {
+      muted: options.preferences?.audioMuted ?? false,
+      reducedIntensity: options.preferences?.reducedFeedbackIntensity ?? false
+    }
+  );
 
   drawBackdrop.call(this);
   drawWallAndTarget.call(this, projection);
@@ -178,6 +192,7 @@ export function createWallballPlayScene(
 
   this.wallballPlay = {
     adapter,
+    audio,
     ball: actors.ball,
     feedback,
     feedbackIntensity,
@@ -215,6 +230,10 @@ export function updateWallballPlayScenePreferences(
   }
 
   runtime.feedbackIntensity = feedbackIntensityFromPreferences(preferences);
+  runtime.audio.setPreferences({
+    muted: preferences.audioMuted,
+    reducedIntensity: preferences.reducedFeedbackIntensity
+  });
   runtime.adapter = configurePlaySceneLoopAdapter(
     runtime.adapter,
     createPlaySceneAdapterInputFromPreferences(preferences, {
@@ -235,6 +254,7 @@ export function dispatchWallballPlaySceneControlIntent(
     return;
   }
 
+  runtime.audio.unlock();
   runtime.adapter = applyPlaySceneControlIntent(runtime.adapter, intent, timeMs);
   renderAndEmitProjection(this, runtime);
 }
@@ -583,6 +603,7 @@ function renderAndEmitProjection(
 
   renderProjection(runtime, projection);
   emitPlaySceneProjection(context, runtime, projection);
+  runtime.audio.ingest(runtime.adapter.loop.eventLog);
 }
 
 function cycleSetupTeam(
@@ -595,6 +616,7 @@ function cycleSetupTeam(
     return;
   }
 
+  runtime.audio.unlock();
   const setup = projectPlaySceneLoopState(runtime.adapter).setup;
   const currentTeamId = side === "away" ? setup.awayTeamId : setup.homeTeamId;
   const currentIndex = setup.teams.findIndex((team) => team.id === currentTeamId);
@@ -618,6 +640,7 @@ function startSetupMatch(this: PlaySceneContext): void {
     return;
   }
 
+  runtime.audio.unlock();
   runtime.adapter = startPlaySceneLoopAdapter(runtime.adapter, currentTimeMs());
   renderAndEmitProjection(this, runtime);
 }
@@ -634,6 +657,7 @@ function toggleSetupPause(this: PlaySceneContext): void {
 }
 
 function restartSetupMatch(this: PlaySceneContext): void {
+  this.wallballPlay?.audio.unlock();
   dispatchWallballPlaySceneControlIntent.call(
     this,
     {

@@ -4,10 +4,15 @@ import {
   createWallballPlayScene,
   dispatchWallballPlaySceneControlIntent,
   WALLBALL_PLAY_SCENE_PROJECTION_EVENT,
+  updateWallballPlayScenePreferences,
   type WallballPlaySceneProjectionEventDetail,
   updateWallballPlayScene
 } from "./play-scene";
 import { DEFAULT_GAMEPLAY_PREFERENCES } from "../preferences";
+import type {
+  LocalMatchAudioCue,
+  LocalMatchAudioCueOutput
+} from "../systems/local-match-audio";
 
 type FakePlaySceneRuntime = NonNullable<
   ThisParameterType<typeof createWallballPlayScene>["wallballPlay"]
@@ -364,6 +369,95 @@ describe("createWallballPlayScene", () => {
     expect(calls.some((call) => call.text === "Target hit")).toBe(false);
   });
 
+  it("plays local audio cues only after user controls unlock audio", () => {
+    const calls: DrawCall[] = [];
+    const audioOutput = createRecordingAudioOutput();
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene, {
+      audioOutput
+    });
+    updateWallballPlayScene.call(scene, 10_000, 0);
+
+    expect(audioOutput.played).toEqual([]);
+
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      10_180
+    );
+
+    expect(audioOutput.played.map((entry) => entry.cue.kind)).toEqual([
+      "swing",
+      "contact",
+      "wall-hit"
+    ]);
+  });
+
+  it("keeps muted audio silent without replaying stale cues after unmute", () => {
+    const calls: DrawCall[] = [];
+    const audioOutput = createRecordingAudioOutput();
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene, {
+      audioOutput,
+      preferences: {
+        ...DEFAULT_GAMEPLAY_PREFERENCES,
+        audioMuted: true,
+        soloAssistEnabled: false
+      }
+    });
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    updateWallballPlayScenePreferences.call(scene, {
+      ...DEFAULT_GAMEPLAY_PREFERENCES,
+      audioMuted: false,
+      reducedFeedbackIntensity: true,
+      soloAssistEnabled: false
+    });
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+
+    expect(audioOutput.played).toEqual([
+      {
+        cue: {
+          kind: "swing",
+          sequence: 2
+        },
+        reducedIntensity: true
+      },
+      {
+        cue: {
+          kind: "contact",
+          sequence: 3
+        },
+        reducedIntensity: true
+      },
+      {
+        cue: {
+          kind: "wall-hit",
+          sequence: 4
+        },
+        reducedIntensity: true
+      }
+    ]);
+  });
+
   it("toggles pause state and quick restarts through local scene controls", () => {
     const calls: DrawCall[] = [];
     const scene = createFakeSceneContext(calls);
@@ -441,6 +535,22 @@ function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
 
         return textObject;
       }
+    }
+  };
+}
+
+function createRecordingAudioOutput(): LocalMatchAudioCueOutput & {
+  played: { cue: LocalMatchAudioCue; reducedIntensity: boolean }[];
+} {
+  const played: { cue: LocalMatchAudioCue; reducedIntensity: boolean }[] = [];
+
+  return {
+    played,
+    playCue: (cue, options) => {
+      played.push({
+        cue,
+        reducedIntensity: options.reducedIntensity
+      });
     }
   };
 }
