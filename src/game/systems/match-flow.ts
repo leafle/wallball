@@ -236,7 +236,7 @@ function didHalfInningEnd(
   );
 }
 
-function isScoringResult(
+export function isScoringResult(
   result: PlateAppearanceResult
 ): result is ScoringResult {
   return scoringResults.includes(result as ScoringResult);

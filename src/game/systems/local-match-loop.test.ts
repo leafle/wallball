@@ -84,6 +84,40 @@ describe("local match loop", () => {
     });
   });
 
+  it("keeps scoreless recovered hits from being recorded as outs", () => {
+    const recovered = recover(
+      swing(
+        pitch(createTestLoopState(), {
+          pitchX: 0.75
+        }),
+        1_260
+      )
+    );
+
+    expect(recovered.lastPlay?.plateAppearance).toMatchObject({
+      batterId: "cainer",
+      result: "single",
+      runsScored: [],
+      halfInningEnded: false
+    });
+    expect(recovered.flow.match.inning).toEqual({
+      inning: 1,
+      half: "top",
+      outs: 0
+    });
+    expect(recovered.flow.bases).toEqual({
+      first: "cainer",
+      second: null,
+      third: null
+    });
+    expect(recovered.eventLog.map((event) => event.kind)).toEqual([
+      "pitch",
+      "swing",
+      "contact",
+      "recovery"
+    ]);
+  });
+
   it("resolves a swung miss by carrying the pitch to the wall inside the strike-zone square", () => {
     const swung = swing(pitch(createTestLoopState()), 1_500);
 

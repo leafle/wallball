@@ -36,6 +36,64 @@ describe("scoring", () => {
     });
   });
 
+  it("advances runners two bases on doubles", () => {
+    const result = applyScoringResult(
+      {
+        score: createScore({ away: 1 }),
+        bases: {
+          first: "cainer",
+          second: "minkus",
+          third: "brandon"
+        },
+        battingSide: "away"
+      },
+      "double",
+      "al"
+    );
+
+    expect(result).toEqual({
+      score: {
+        away: 3,
+        home: 0
+      },
+      bases: {
+        first: null,
+        second: "al",
+        third: "cainer"
+      },
+      runsScored: ["brandon", "minkus"]
+    });
+  });
+
+  it("advances runners three bases on triples", () => {
+    const result = applyScoringResult(
+      {
+        score: createScore({ home: 2 }),
+        bases: {
+          first: "cainer",
+          second: "minkus",
+          third: "brandon"
+        },
+        battingSide: "home"
+      },
+      "triple",
+      "al"
+    );
+
+    expect(result).toEqual({
+      score: {
+        away: 0,
+        home: 5
+      },
+      bases: {
+        first: null,
+        second: null,
+        third: "al"
+      },
+      runsScored: ["brandon", "minkus", "cainer"]
+    });
+  });
+
   it("clears the bases and scores the batter on a home run", () => {
     const result = applyScoringResult(
       {

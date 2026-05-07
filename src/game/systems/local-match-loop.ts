@@ -34,7 +34,8 @@ import type {
 import {
   applyPlateAppearance,
   createMatchFlowState,
-  getCurrentBatterId
+  getCurrentBatterId,
+  isScoringResult
 } from "./match-flow";
 import {
   resolvePitchWallOutcome,
@@ -657,7 +658,7 @@ function createPlateAppearanceEvents(
         })
       );
     }
-  } else {
+  } else if (!isScoringResult(plateAppearance.result)) {
     events.push(
       localEvent(state, "out", plateAppearance.batterId, {
         result: plateAppearance.result,
