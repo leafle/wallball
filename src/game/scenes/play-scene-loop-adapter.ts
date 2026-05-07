@@ -54,6 +54,10 @@ export interface PlaySceneLoopAdapter {
   tuning: GameplayTuningConfig;
 }
 
+export interface AdvancePlaySceneLoopAdapterOptions {
+  resolveTakenPitch?: boolean;
+}
+
 export interface CreatePlaySceneLoopAdapterInput {
   awayTeamId?: string;
   controlledFielderId?: string;
@@ -339,7 +343,8 @@ export function startPlaySceneLoopAdapter(
 
 export function advancePlaySceneLoopAdapter(
   adapter: PlaySceneLoopAdapter,
-  timeMs: number
+  timeMs: number,
+  { resolveTakenPitch = true }: AdvancePlaySceneLoopAdapterOptions = {}
 ): PlaySceneLoopAdapter {
   if (
     adapter.runState.kind === "paused" ||
@@ -351,6 +356,9 @@ export function advancePlaySceneLoopAdapter(
   const elapsedMs = Math.max(0, timeMs - adapter.lastAdvancedAtMs);
   let movedAdapter = moveControlledFielder(adapter, timeMs);
   movedAdapter = applySoloPitchAssist(movedAdapter, timeMs);
+  if (resolveTakenPitch) {
+    movedAdapter = applyTakenPitchTimeout(movedAdapter, timeMs);
+  }
 
   if (
     movedAdapter.loop.phase.kind !== "awaiting-recovery" ||
@@ -391,7 +399,9 @@ export function applyPlaySceneControlIntent(
     return adapter;
   }
 
-  const current = advancePlaySceneLoopAdapter(adapter, timeMs);
+  const current = advancePlaySceneLoopAdapter(adapter, timeMs, {
+    resolveTakenPitch: intent.kind !== "swing"
+  });
 
   if (current.loop.phase.kind === "match-completed") {
     return current;
@@ -618,6 +628,26 @@ function applySwingControl(
       swingAtMs: timeMs
     }),
     nextActionAtMs: timeMs + adapter.recoveryDelayMs
+  };
+}
+
+function applyTakenPitchTimeout(
+  adapter: PlaySceneLoopAdapter,
+  timeMs: number
+): PlaySceneLoopAdapter {
+  if (
+    adapter.loop.phase.kind !== "pitch-in-flight" ||
+    timeMs < adapter.nextActionAtMs
+  ) {
+    return adapter;
+  }
+
+  return {
+    ...adapter,
+    loop: advanceLocalMatchLoop(adapter.loop, {
+      type: "take-pitch"
+    }),
+    nextActionAtMs: timeMs + adapter.nextPitchDelayMs
   };
 }
 

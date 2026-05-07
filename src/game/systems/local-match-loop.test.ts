@@ -84,6 +84,87 @@ describe("local match loop", () => {
     });
   });
 
+  it("resolves a swung miss by carrying the pitch to the wall inside the strike-zone square", () => {
+    const swung = swing(pitch(createTestLoopState()), 1_500);
+
+    expect(swung.phase).toEqual({
+      kind: "ready-for-at-bat",
+      batterId: "minkus"
+    });
+    expect(swung.lastPlay?.ballResult.kind).toBe("miss");
+    expect(swung.lastPlay?.pitchOutcome).toEqual({
+      source: "swung-miss",
+      zone: "inside-strike-zone"
+    });
+    expect(swung.lastPlay?.wallCollision).toMatchObject({
+      kind: "wall-collision",
+      targetHit: true,
+      collisionPoint: {
+        x: 520,
+        y: 120
+      }
+    });
+    expect(swung.eventLog).toContainEqual(
+      expect.objectContaining({
+        kind: "target-hit",
+        result: "miss",
+        targetHit: true
+      })
+    );
+  });
+
+  it("classifies a swung miss outside the wall strike-zone square", () => {
+    const swung = swing(
+      pitch(createTestLoopState(), {
+        pitchX: 0.75
+      }),
+      1_500
+    );
+
+    expect(swung.lastPlay?.pitchOutcome).toEqual({
+      source: "swung-miss",
+      zone: "outside-strike-zone"
+    });
+    expect(swung.lastPlay?.wallCollision).toMatchObject({
+      kind: "wall-collision",
+      targetHit: false,
+      collisionPoint: {
+        x: 580,
+        y: 120
+      }
+    });
+    expect(swung.eventLog).toContainEqual(
+      expect.objectContaining({
+        kind: "wall-hit",
+        result: "miss",
+        targetHit: false
+      })
+    );
+  });
+
+  it("resolves a taken pitch at the wall without recording a swing", () => {
+    const taken = takePitch(pitch(createTestLoopState()));
+
+    expect(taken.phase).toEqual({
+      kind: "ready-for-at-bat",
+      batterId: "minkus"
+    });
+    expect(taken.lastPlay?.pitchOutcome).toEqual({
+      source: "taken",
+      zone: "inside-strike-zone"
+    });
+    expect(taken.lastPlay?.wallCollision).toMatchObject({
+      kind: "wall-collision",
+      targetHit: true
+    });
+    expect(taken.eventLog.map((event) => event.kind)).toEqual([
+      "pitch",
+      "take",
+      "target-hit",
+      "out"
+    ]);
+  });
+
   it("advances to the home half after the third recovered out", () => {
     const firstOut = pitchSwingRecover(createTestLoopState(), 1_300);
     const secondOut = pitchSwingRecover(firstOut, 1_300);
@@ -268,13 +349,20 @@ function getRoster(teamId: string): TeamRoster {
   return roster;
 }
 
-function pitch(state: LocalMatchLoopState): LocalMatchLoopState {
+function pitch(
+  state: LocalMatchLoopState,
+  overrides: {
+    pitchX?: number;
+    targetX?: number;
+  } = {}
+): LocalMatchLoopState {
   return advanceLocalMatchLoop(state, {
     type: "pitch",
     pitchStartedAtMs: 1_000,
     idealContactMs: 180,
     pitchX: 0,
-    targetX: 0
+    targetX: 0,
+    ...overrides
   });
 }
 
@@ -291,6 +379,12 @@ function swing(
 function recover(state: LocalMatchLoopState): LocalMatchLoopState {
   return advanceLocalMatchLoop(state, {
     type: "recover-ball"
+  });
+}
+
+function takePitch(state: LocalMatchLoopState): LocalMatchLoopState {
+  return advanceLocalMatchLoop(state, {
+    type: "take-pitch"
   });
 }
 

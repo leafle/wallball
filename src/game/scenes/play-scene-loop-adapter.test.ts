@@ -270,6 +270,41 @@ describe("play scene local loop adapter", () => {
     );
   });
 
+  it("resolves a taken pitch when no swing arrives before the wall contact time", () => {
+    const initial = createPlaySceneLoopAdapter({
+      nextPitchDelayMs: 500,
+      pitchDurationMs: 200,
+      soloAssist: false,
+      startedAtMs: 1_000
+    });
+    const pitched = applyPlaySceneControlIntent(
+      initial,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+
+    const taken = advancePlaySceneLoopAdapter(pitched, 1_200);
+
+    expect(projectPlaySceneLoopState(taken).phase).toEqual({
+      kind: "ready-for-at-bat",
+      batterId: "minkus"
+    });
+    expect(taken.loop.lastPlay?.pitchOutcome).toEqual({
+      source: "taken",
+      zone: "inside-strike-zone"
+    });
+    expect(taken.loop.eventLog.map((event) => event.kind)).toEqual([
+      "pitch",
+      "take",
+      "target-hit",
+      "out"
+    ]);
+    expect(taken.nextActionAtMs).toBe(1_700);
+  });
+
   it("moves the controlled fielder while fielding input is held", () => {
     const initial = createPlaySceneLoopAdapter({ startedAtMs: 0 });
     const moving = applyPlaySceneControlIntent(

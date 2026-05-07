@@ -36,6 +36,12 @@ import {
   createMatchFlowState,
   getCurrentBatterId
 } from "./match-flow";
+import {
+  resolvePitchWallOutcome,
+  type PitchWallOutcome,
+  type PitchWallOutcomeSource,
+  type ResolvedPitchWallOutcome
+} from "./pitch-flow";
 
 export type LocalMatchPhase =
   | {
@@ -64,6 +70,7 @@ export interface LocalMatchCompletionResult {
 export type LocalMatchEventKind =
   | "pitch"
   | "swing"
+  | "take"
   | "contact"
   | "wall-hit"
   | "target-hit"
@@ -100,10 +107,11 @@ export type LocalPlateAppearance = Omit<PlateAppearanceUpdate, "state">;
 export interface LocalMatchPlay {
   batterId: string;
   pitch: LocalPitch;
-  swingTimingMs: number;
-  battingLaunch: BattingLaunch;
+  swingTimingMs: number | null;
+  battingLaunch: BattingLaunch | null;
   ballResult: BallResult;
   wallCollision: WallTargetCollision;
+  pitchOutcome: PitchWallOutcome | null;
   recovery: BallRecovery | null;
   plateAppearance: LocalPlateAppearance | null;
 }
@@ -155,6 +163,10 @@ export interface SwingLocalMatchAction {
   swingAtMs: number;
 }
 
+export interface TakePitchLocalMatchAction {
+  type: "take-pitch";
+}
+
 export interface RecoverBallLocalMatchAction {
   type: "recover-ball";
 }
@@ -170,6 +182,7 @@ export interface MoveFielderLocalMatchAction {
 export type LocalMatchLoopAction =
   | PitchLocalMatchAction
   | SwingLocalMatchAction
+  | TakePitchLocalMatchAction
   | RecoverBallLocalMatchAction
   | MoveFielderLocalMatchAction;
 
@@ -266,6 +279,10 @@ export function advanceLocalMatchLoop(
     return swingAtPitch(state, action);
   }
 
+  if (action.type === "take-pitch") {
+    return takePitchAtWall(state);
+  }
+
   if (action.type === "move-fielder") {
     return moveLocalFielder(state, action);
   }
@@ -345,16 +362,25 @@ function swingAtPitch(
     swingTuning: state.settings.swingTuning,
     wallTargetHit: preliminaryCollision.targetHit
   });
-  const wallCollision = resolveWallTargetCollision({
-    ball: {
-      position: cloneVector(state.settings.ballStart),
-      velocity: battingLaunch.velocity
-    },
-    elapsedMs: state.settings.wallElapsedMs,
-    wall: state.settings.wall,
-    target: state.settings.wallTarget,
-    restitution: state.settings.wallRestitution
-  });
+  const resolvedPitchOutcome =
+    battingLaunch.result.kind === "miss"
+      ? resolvePitchWallOutcomeForState(state, "swung-miss")
+      : null;
+  const wallCollision =
+    resolvedPitchOutcome?.wallCollision ??
+    resolveWallTargetCollision({
+      ball: {
+        position: cloneVector(state.settings.ballStart),
+        velocity: battingLaunch.velocity
+      },
+      elapsedMs: state.settings.wallElapsedMs,
+      wall: state.settings.wall,
+      target: state.settings.wallTarget,
+      restitution: state.settings.wallRestitution
+    });
+  const pitchOutcome = resolvedPitchOutcome
+    ? summarizePitchOutcome(resolvedPitchOutcome)
+    : null;
   const play: LocalMatchPlay = {
     batterId: state.phase.batterId,
     pitch: state.currentPitch,
@@ -362,6 +388,7 @@ function swingAtPitch(
     battingLaunch,
     ballResult: battingLaunch.result,
     wallCollision,
+    pitchOutcome,
     recovery: null,
     plateAppearance: null
   };
@@ -374,7 +401,7 @@ function swingAtPitch(
     currentPitch: null,
     eventLog: appendLocalMatchEvents(
       state,
-      createSwingEvents(state, battingLaunch.result, wallCollision)
+      createSwingEvents(state, battingLaunch.result, wallCollision, pitchOutcome)
     ),
     lastPlay: play
   };
@@ -390,6 +417,42 @@ function swingAtPitch(
       batterId: state.phase.batterId
     }
   };
+}
+
+function takePitchAtWall(state: LocalMatchLoopState): LocalMatchLoopState {
+  if (state.phase.kind !== "pitch-in-flight" || !state.currentPitch) {
+    throw new Error("Cannot take a pitch unless a pitch is in flight");
+  }
+
+  const resolvedPitchOutcome = resolvePitchWallOutcomeForState(state, "taken");
+  const pitchOutcome = summarizePitchOutcome(resolvedPitchOutcome);
+  const ballResult = missedPitchResult();
+  const play: LocalMatchPlay = {
+    batterId: state.phase.batterId,
+    pitch: state.currentPitch,
+    swingTimingMs: null,
+    battingLaunch: null,
+    ballResult,
+    wallCollision: resolvedPitchOutcome.wallCollision,
+    pitchOutcome,
+    recovery: null,
+    plateAppearance: null
+  };
+  const nextState = {
+    ...state,
+    ball: {
+      position: resolvedPitchOutcome.wallCollision.position,
+      velocity: resolvedPitchOutcome.wallCollision.velocity
+    },
+    currentPitch: null,
+    eventLog: appendLocalMatchEvents(
+      state,
+      createTakenPitchEvents(state, ballResult, resolvedPitchOutcome.wallCollision)
+    ),
+    lastPlay: play
+  };
+
+  return finishPlateAppearance(nextState, "miss", null);
 }
 
 function recoverBall(state: LocalMatchLoopState): LocalMatchLoopState {
@@ -495,7 +558,8 @@ type LocalMatchEventDraft = Omit<LocalMatchEvent, "sequence">;
 function createSwingEvents(
   state: LocalMatchLoopState,
   result: BallResult,
-  wallCollision: WallTargetCollision
+  wallCollision: WallTargetCollision,
+  pitchOutcome: PitchWallOutcome | null
 ): LocalMatchEventDraft[] {
   const batterId =
     state.phase.kind === "pitch-in-flight" ? state.phase.batterId : null;
@@ -508,22 +572,68 @@ function createSwingEvents(
       result: result.kind
     })
   ];
+  const wallEvent = createWallContactEvent(
+    state,
+    batterId,
+    result.kind,
+    wallCollision,
+    result.kind !== "miss" || pitchOutcome !== null
+  );
 
-  if (result.kind !== "miss" && wallCollision.kind === "wall-collision") {
-    events.push(
-      localEvent(
-        state,
-        wallCollision.targetHit ? "target-hit" : "wall-hit",
-        batterId,
-        {
-          result: result.kind,
-          targetHit: wallCollision.targetHit
-        }
-      )
-    );
+  if (wallEvent) {
+    events.push(wallEvent);
   }
 
   return events;
+}
+
+function createTakenPitchEvents(
+  state: LocalMatchLoopState,
+  result: BallResult,
+  wallCollision: WallTargetCollision
+): LocalMatchEventDraft[] {
+  const batterId =
+    state.phase.kind === "pitch-in-flight" ? state.phase.batterId : null;
+  const events = [
+    localEvent(state, "take", batterId, {
+      result: result.kind
+    })
+  ];
+  const wallEvent = createWallContactEvent(
+    state,
+    batterId,
+    result.kind,
+    wallCollision,
+    true
+  );
+
+  if (wallEvent) {
+    events.push(wallEvent);
+  }
+
+  return events;
+}
+
+function createWallContactEvent(
+  state: LocalMatchLoopState,
+  batterId: string | null,
+  result: BallResultKind,
+  wallCollision: WallTargetCollision,
+  shouldRecord: boolean
+): LocalMatchEventDraft | null {
+  if (!shouldRecord || wallCollision.kind !== "wall-collision") {
+    return null;
+  }
+
+  return localEvent(
+    state,
+    wallCollision.targetHit ? "target-hit" : "wall-hit",
+    batterId,
+    {
+      result,
+      targetHit: wallCollision.targetHit
+    }
+  );
 }
 
 function createPlateAppearanceEvents(
@@ -697,5 +807,42 @@ function cloneVector(vector: Vector2): Vector2 {
   return {
     x: vector.x,
     y: vector.y
+  };
+}
+
+function resolvePitchWallOutcomeForState(
+  state: LocalMatchLoopState,
+  source: PitchWallOutcomeSource
+): ResolvedPitchWallOutcome {
+  if (!state.currentPitch) {
+    throw new Error("Cannot resolve pitch wall outcome without a current pitch");
+  }
+
+  return resolvePitchWallOutcome({
+    ballStart: state.settings.ballStart,
+    elapsedMs: state.settings.wallElapsedMs,
+    pitch: state.currentPitch,
+    restitution: state.settings.wallRestitution,
+    source,
+    target: state.settings.wallTarget,
+    wall: state.settings.wall
+  });
+}
+
+function summarizePitchOutcome({
+  source,
+  zone
+}: ResolvedPitchWallOutcome): PitchWallOutcome {
+  return {
+    source,
+    zone
+  };
+}
+
+function missedPitchResult(): BallResult {
+  return {
+    kind: "miss",
+    contactQuality: "none",
+    launchAngleDegrees: 0
   };
 }
