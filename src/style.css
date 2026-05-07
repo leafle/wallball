@@ -82,7 +82,7 @@ select {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
   gap: 14px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .local-side-panel {
@@ -989,5 +989,107 @@ label {
 
   .control-help-sections {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .app-shell {
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .game-panel {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .title-row {
+    order: 1;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  .resolution-pill {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 0.75rem;
+  }
+
+  .game-stage-grid {
+    order: 2;
+    gap: 8px;
+  }
+
+  .play-surface-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+
+  .phaser-host {
+    width: min(100%, calc((100svh - 64px) * 16 / 9));
+    justify-self: center;
+  }
+
+  .local-side-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .post-match-panel,
+  .match-history-panel {
+    max-height: 42svh;
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .post-match-score {
+    font-size: 1.1rem;
+  }
+
+  .control-help-panel {
+    order: 3;
+    max-height: 42svh;
+    gap: 8px;
+    margin: 8px 0 0;
+    overflow: auto;
+    padding: 8px;
+  }
+
+  .control-help-header,
+  .control-help-collapsed {
+    align-items: center;
+  }
+
+  .control-help-header p {
+    display: none;
+  }
+
+  .control-help-sections {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .control-help-section {
+    gap: 5px;
+  }
+
+  .control-help-section dl {
+    gap: 5px;
+  }
+
+  .prototype-host {
+    width: min(100%, calc((100svh - 64px) * 16 / 9));
+    justify-self: center;
   }
 }

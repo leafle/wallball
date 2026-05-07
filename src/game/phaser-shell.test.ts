@@ -76,6 +76,40 @@ describe("mountPhaserGameShell", () => {
     expect(requestedSceneKey).toBe("wallball-play");
     expect(scene.wallballPlay?.adapter.loop.phase.kind).toBe("pitch-in-flight");
   });
+
+  it("dispatches through Phaser scene managers that expose getScene", async () => {
+    let requestedSceneKey = "";
+    const scene = createFakeSceneContext();
+    createWallballPlayScene.call(scene);
+    class FakeGame {
+      scene = {
+        getScene: (key: string) => {
+          requestedSceneKey = key;
+
+          return scene;
+        }
+      };
+
+      destroy(): void {
+        // no-op fake
+      }
+    }
+
+    const mounted = await mountPhaserGameShell(async () => ({
+      Game: FakeGame
+    }));
+
+    mounted.dispatchControlIntent(
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+
+    expect(requestedSceneKey).toBe("wallball-play");
+    expect(scene.wallballPlay?.adapter.loop.phase.kind).toBe("pitch-in-flight");
+  });
 });
 
 function createFakeSceneContext(): ThisParameterType<

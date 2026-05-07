@@ -14,7 +14,8 @@ type WallballPlaySceneControlTarget = ThisParameterType<
 export interface PhaserGameLike {
   destroy(removeCanvas?: boolean): void;
   scene?: {
-    get(key: string): unknown;
+    get?: (key: string) => unknown;
+    getScene?: (key: string) => unknown;
   };
 }
 
@@ -41,7 +42,7 @@ export async function mountPhaserGameShell(
 
   return {
     dispatchControlIntent: (intent, timeMs = currentTimeMs()) => {
-      const scene = game.scene?.get(WALLBALL_PLAY_SCENE_KEY);
+      const scene = getWallballPlayScene(game);
 
       if (scene && typeof scene === "object") {
         dispatchWallballPlaySceneControlIntent.call(
@@ -56,6 +57,20 @@ export async function mountPhaserGameShell(
     },
     game
   };
+}
+
+function getWallballPlayScene(game: PhaserGameLike): unknown {
+  const sceneManager = game.scene;
+
+  if (typeof sceneManager?.getScene === "function") {
+    return sceneManager.getScene(WALLBALL_PLAY_SCENE_KEY);
+  }
+
+  if (typeof sceneManager?.get === "function") {
+    return sceneManager.get(WALLBALL_PLAY_SCENE_KEY);
+  }
+
+  return null;
 }
 
 async function loadPhaserRuntime(): Promise<PhaserRuntime> {
