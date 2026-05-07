@@ -47,6 +47,10 @@ import {
   type MatchHistoryScreenProjection,
   type MatchHistoryTeamLabel
 } from "./game/ui/match-history-screen";
+import {
+  projectRemoteLobbyChecklist,
+  type RemoteLobbyChecklistProjection
+} from "./game/ui/remote-lobby";
 import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -72,6 +76,10 @@ const localDataClient = createResilientWallballDataClient({
   primary: createFixtureWallballDataClient()
 });
 const remoteClient = createRemoteRoomClient();
+const remoteLobbyTeams = rosters.map(({ displayName, id }) => ({
+  displayName,
+  id
+}));
 
 interface RemoteUiState {
   assignment: RemoteAssignment | null;
@@ -811,22 +819,19 @@ function renderRemoteState(): void {
   const snapshot = remoteState.snapshot;
   const assignment = remoteState.assignment;
 
+  renderRemoteLobbyChecklist(
+    projectRemoteLobbyChecklist({
+      assignment,
+      snapshot,
+      teams: remoteLobbyTeams
+    })
+  );
+
   if (!snapshot || !assignment) {
-    renderStatus("No room connected");
     renderList(intentLogElement, []);
     renderList(matchLogElement, []);
     return;
   }
-
-  roomStateElement.innerHTML = `
-    <span class="room-code">${escapeHtml(snapshot.code)}</span>
-    <span>${escapeHtml(assignment.role)} - ${escapeHtml(assignment.side)}</span>
-    <span>${escapeHtml(teamName(snapshot.teams.away))} at ${escapeHtml(
-      teamName(snapshot.teams.home)
-    )}</span>
-    <span>${snapshot.players.away ? "Away ready" : "Away open"}</span>
-    <span>${snapshot.players.home ? "Home ready" : "Home open"}</span>
-  `;
 
   renderList(
     intentLogElement,
@@ -851,6 +856,39 @@ function renderStatus(message: string): void {
   roomStateElement.innerHTML = `<span>${escapeHtml(message)}</span>`;
 }
 
+function renderRemoteLobbyChecklist(
+  panel: RemoteLobbyChecklistProjection
+): void {
+  roomStateElement.innerHTML = `
+    <div class="remote-lobby-header">
+      <div>
+        <h2>${escapeHtml(panel.title)}</h2>
+        <p>${escapeHtml(panel.statusLabel)}</p>
+      </div>
+      <span class="room-code">${escapeHtml(panel.roomCodeLabel)}</span>
+    </div>
+    <div class="remote-lobby-meta">
+      <span>${escapeHtml(panel.assignmentLabel)}</span>
+      <span>${escapeHtml(panel.bridgeLabel)}</span>
+    </div>
+    <ol class="remote-lobby-checklist">
+      ${panel.checklistRows
+        .map(
+          (row) => `
+            <li class="remote-lobby-row is-${row.state}">
+              <span class="remote-lobby-state">${escapeHtml(row.state)}</span>
+              <span>
+                <strong>${escapeHtml(row.label)}</strong>
+                <small>${escapeHtml(row.detail)}</small>
+              </span>
+            </li>
+          `
+        )
+        .join("")}
+    </ol>
+  `;
+}
+
 function reportError(error: unknown): void {
   renderStatus(error instanceof Error ? error.message : "Remote request failed");
 }
@@ -873,10 +911,6 @@ function deriveScore(snapshot: RemoteRoomSnapshot): { away: number; home: number
       home: 0
     }
   );
-}
-
-function teamName(teamId: string): string {
-  return rosters.find((team) => team.id === teamId)?.displayName ?? teamId;
 }
 
 function playerLabel(
