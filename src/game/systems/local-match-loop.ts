@@ -1,6 +1,6 @@
 import type { TeamRoster } from "../domain/rosters";
 import { createBattingOrderFromRosters } from "../domain/rosters";
-import type { Score } from "../domain/rules";
+import type { HalfInning, Score } from "../domain/rules";
 import {
   DEFAULT_GAMEPLAY_TUNING,
   type GameplaySwingTuning
@@ -18,7 +18,7 @@ import {
   calculateSwingTimingMs,
   type BattingLaunch
 } from "./batting";
-import type { BallResult, BallResultKind } from "./ball-results";
+import type { BallResult, BallResultKind, ContactQuality } from "./ball-results";
 import type {
   BallRecovery,
   FieldBounds,
@@ -26,7 +26,11 @@ import type {
   Fielder
 } from "./fielding";
 import { moveFielder, resolveBallRecovery } from "./fielding";
-import type { MatchFlowState, PlateAppearanceUpdate } from "./match-flow";
+import type {
+  MatchFlowState,
+  PlateAppearanceResult,
+  PlateAppearanceUpdate
+} from "./match-flow";
 import {
   applyPlateAppearance,
   createMatchFlowState,
@@ -55,6 +59,33 @@ export interface LocalMatchCompletionResult {
   loserTeamId: string | null;
   score: Score;
   winnerTeamId: string | null;
+}
+
+export type LocalMatchEventKind =
+  | "pitch"
+  | "swing"
+  | "contact"
+  | "wall-hit"
+  | "target-hit"
+  | "recovery"
+  | "out"
+  | "run"
+  | "inning-change"
+  | "match-completed";
+
+export interface LocalMatchEvent {
+  contactQuality?: ContactQuality;
+  fielderId?: string | null;
+  half: HalfInning;
+  inning: number;
+  kind: LocalMatchEventKind;
+  playerId: string | null;
+  recoveryKind?: BallRecovery["kind"];
+  result?: PlateAppearanceResult;
+  runsScored?: string[];
+  score?: Score;
+  sequence: number;
+  targetHit?: boolean;
 }
 
 export interface LocalPitch {
@@ -91,6 +122,7 @@ export interface LocalMatchLoopSettings {
 export interface LocalMatchLoopState {
   flow: MatchFlowState;
   phase: LocalMatchPhase;
+  eventLog: LocalMatchEvent[];
   fielders: Fielder[];
   ball: BallPhysicsSnapshot;
   currentPitch: LocalPitch | null;
@@ -194,6 +226,7 @@ export function createLocalMatchLoopState({
   return {
     flow,
     phase: readyForAtBat(flow),
+    eventLog: [],
     fielders: fielders.map(cloneFielder),
     ball: {
       position: cloneVector(ballStart),
@@ -268,7 +301,10 @@ function pitchLocalMatch(
         y: 0
       }
     },
-    currentPitch: pitch
+    currentPitch: pitch,
+    eventLog: appendLocalMatchEvents(state, [
+      localEvent(state, "pitch", state.phase.batterId)
+    ])
   };
 }
 
@@ -336,6 +372,10 @@ function swingAtPitch(
       velocity: wallCollision.velocity
     },
     currentPitch: null,
+    eventLog: appendLocalMatchEvents(
+      state,
+      createSwingEvents(state, battingLaunch.result, wallCollision)
+    ),
     lastPlay: play
   };
 
@@ -367,6 +407,9 @@ function recoverBall(state: LocalMatchLoopState): LocalMatchLoopState {
   if (recovery.kind === "loose") {
     return {
       ...state,
+      eventLog: appendLocalMatchEvents(state, [
+        recoveryEvent(state, recovery)
+      ]),
       lastPlay: {
         ...state.lastPlay,
         recovery
@@ -424,6 +467,10 @@ function finishPlateAppearance(
 
   return {
     ...state,
+    eventLog: appendLocalMatchEvents(
+      state,
+      createPlateAppearanceEvents(state, plateAppearance, recovery)
+    ),
     flow: plateAppearance.state,
     phase: plateAppearance.matchCompleted
       ? matchCompleted(plateAppearance.state)
@@ -441,6 +488,143 @@ function finishPlateAppearance(
       }
     }
   };
+}
+
+type LocalMatchEventDraft = Omit<LocalMatchEvent, "sequence">;
+
+function createSwingEvents(
+  state: LocalMatchLoopState,
+  result: BallResult,
+  wallCollision: WallTargetCollision
+): LocalMatchEventDraft[] {
+  const batterId =
+    state.phase.kind === "pitch-in-flight" ? state.phase.batterId : null;
+  const events: LocalMatchEventDraft[] = [
+    localEvent(state, "swing", batterId, {
+      result: result.kind
+    }),
+    localEvent(state, "contact", batterId, {
+      contactQuality: result.contactQuality,
+      result: result.kind
+    })
+  ];
+
+  if (result.kind !== "miss" && wallCollision.kind === "wall-collision") {
+    events.push(
+      localEvent(
+        state,
+        wallCollision.targetHit ? "target-hit" : "wall-hit",
+        batterId,
+        {
+          result: result.kind,
+          targetHit: wallCollision.targetHit
+        }
+      )
+    );
+  }
+
+  return events;
+}
+
+function createPlateAppearanceEvents(
+  state: LocalMatchLoopState,
+  plateAppearance: PlateAppearanceUpdate,
+  recovery: BallRecovery | null
+): LocalMatchEventDraft[] {
+  const events: LocalMatchEventDraft[] = [];
+
+  if (recovery) {
+    events.push(recoveryEvent(state, recovery));
+  }
+
+  if (plateAppearance.runsScored.length > 0) {
+    for (const runnerId of plateAppearance.runsScored) {
+      events.push(
+        localEvent(state, "run", runnerId, {
+          result: plateAppearance.result,
+          runsScored: [runnerId],
+          score: cloneScore(plateAppearance.state.match.score)
+        })
+      );
+    }
+  } else {
+    events.push(
+      localEvent(state, "out", plateAppearance.batterId, {
+        result: plateAppearance.result,
+        score: cloneScore(plateAppearance.state.match.score)
+      })
+    );
+  }
+
+  if (plateAppearance.halfInningEnded) {
+    events.push({
+      half: plateAppearance.state.match.inning.half,
+      inning: plateAppearance.state.match.inning.inning,
+      kind: "inning-change",
+      playerId: null,
+      score: cloneScore(plateAppearance.state.match.score)
+    });
+  }
+
+  if (plateAppearance.matchCompleted) {
+    events.push({
+      half: plateAppearance.state.match.inning.half,
+      inning: plateAppearance.state.match.inning.inning,
+      kind: "match-completed",
+      playerId: null,
+      score: cloneScore(plateAppearance.state.match.score)
+    });
+  }
+
+  return events;
+}
+
+function recoveryEvent(
+  state: LocalMatchLoopState,
+  recovery: BallRecovery
+): LocalMatchEventDraft {
+  return localEvent(state, "recovery", recoveryFielderId(recovery), {
+    fielderId: recoveryFielderId(recovery),
+    recoveryKind: recovery.kind
+  });
+}
+
+function recoveryFielderId(recovery: BallRecovery): string | null {
+  return recovery.kind === "recovered"
+    ? recovery.fielderId
+    : recovery.nearestFielderId;
+}
+
+function localEvent(
+  state: LocalMatchLoopState,
+  kind: LocalMatchEventKind,
+  playerId: string | null,
+  detail: Partial<
+    Omit<LocalMatchEventDraft, "half" | "inning" | "kind" | "playerId">
+  > = {}
+): LocalMatchEventDraft {
+  return {
+    half: state.flow.match.inning.half,
+    inning: state.flow.match.inning.inning,
+    kind,
+    playerId,
+    ...detail
+  };
+}
+
+function appendLocalMatchEvents(
+  state: LocalMatchLoopState,
+  events: LocalMatchEventDraft[]
+): LocalMatchEvent[] {
+  return [
+    ...state.eventLog.map(cloneLocalMatchEvent),
+    ...events.map((event, index) =>
+      cloneLocalMatchEvent({
+        ...event,
+        sequence: state.eventLog.length + index + 1
+      })
+    )
+  ];
 }
 
 function matchCompleted(flow: MatchFlowState): LocalMatchPhase {
@@ -492,6 +676,21 @@ function cloneWallTarget(target: WallTarget): WallTarget {
 
 function cloneSwingTuning(tuning: GameplaySwingTuning): GameplaySwingTuning {
   return { ...tuning };
+}
+
+function cloneLocalMatchEvent(event: LocalMatchEvent): LocalMatchEvent {
+  return {
+    ...event,
+    runsScored: event.runsScored ? [...event.runsScored] : undefined,
+    score: event.score ? cloneScore(event.score) : undefined
+  };
+}
+
+function cloneScore(score: Score): Score {
+  return {
+    away: score.away,
+    home: score.home
+  };
 }
 
 function cloneVector(vector: Vector2): Vector2 {

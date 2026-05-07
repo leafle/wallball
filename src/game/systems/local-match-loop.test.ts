@@ -173,6 +173,79 @@ describe("local match loop", () => {
       })
     ).toThrow("Cannot advance a completed match");
   });
+
+  it("records notable pitch, contact, wall, recovery, run, and completion events", () => {
+    const completed = pitchSwingRecover(
+      createLocalMatchLoopState({
+        awayRoster: getRoster("champions"),
+        homeRoster: getRoster("woodland"),
+        fielders,
+        maxRecoverySpeed: 1_000,
+        recoveryRadius: 600,
+        scoreLimit: 1
+      }),
+      1_180
+    );
+
+    expect(completed.eventLog.map((event) => event.kind)).toEqual([
+      "pitch",
+      "swing",
+      "contact",
+      "target-hit",
+      "recovery",
+      "run",
+      "match-completed"
+    ]);
+    expect(completed.eventLog).toContainEqual(
+      expect.objectContaining({
+        contactQuality: "perfect",
+        half: "top",
+        inning: 1,
+        kind: "contact",
+        playerId: "cainer",
+        result: "home-run"
+      })
+    );
+    expect(completed.eventLog.at(-1)).toMatchObject({
+      kind: "match-completed",
+      playerId: null,
+      score: {
+        away: 1,
+        home: 0
+      }
+    });
+  });
+
+  it("records outs and inning changes when the side is retired", () => {
+    const firstOut = pitchSwingRecover(createTestLoopState(), 1_300);
+    const secondOut = pitchSwingRecover(firstOut, 1_300);
+    const thirdOut = pitchSwingRecover(secondOut, 1_300);
+
+    expect(thirdOut.eventLog.map((event) => event.kind)).toEqual([
+      "pitch",
+      "swing",
+      "contact",
+      "recovery",
+      "out",
+      "pitch",
+      "swing",
+      "contact",
+      "recovery",
+      "out",
+      "pitch",
+      "swing",
+      "contact",
+      "recovery",
+      "out",
+      "inning-change"
+    ]);
+    expect(thirdOut.eventLog.at(-1)).toMatchObject({
+      half: "bottom",
+      inning: 1,
+      kind: "inning-change",
+      playerId: null
+    });
+  });
 });
 
 function createTestLoopState(): LocalMatchLoopState {

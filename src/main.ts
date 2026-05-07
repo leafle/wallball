@@ -51,6 +51,11 @@ import {
   type PostMatchResultsPanelProjection
 } from "./game/ui/post-match-results";
 import {
+  projectLocalMatchEventPanel,
+  type LocalMatchEventPanelProjection,
+  type LocalMatchEventPlayerLabel
+} from "./game/ui/local-match-event-panel";
+import {
   projectMatchHistoryScreen,
   type MatchHistoryPlayerLabel,
   type MatchHistoryScreenProjection,
@@ -72,6 +77,7 @@ const appElement = app;
 const battingPrototypeParent = "batting-prototype";
 const controlHelpParent = "control-help";
 const gameplayPreferencesParent = "gameplay-preferences";
+const localMatchEventsParent = "local-match-events";
 const postMatchResultsParent = "post-match-results";
 const matchHistoryParent = "match-history";
 const localRivalryMatchup = {
@@ -133,6 +139,20 @@ const localResultsState: LocalResultsUiState = {
   summary: null
 };
 
+interface LocalEventUiState {
+  events: WallballPlaySceneProjectionEventDetail["loop"]["eventLog"];
+  players: LocalMatchEventPlayerLabel[];
+  projection: WallballPlaySceneProjectionEventDetail["projection"] | null;
+  summary: MatchSummary | null;
+}
+
+const localEventState: LocalEventUiState = {
+  events: [],
+  players: [],
+  projection: null,
+  summary: null
+};
+
 interface LocalHistoryUiState {
   highScores: HighScore[];
   matches: CompletedMatch[];
@@ -191,6 +211,12 @@ appElement.innerHTML = `
               class="post-match-panel"
               aria-live="polite"
               aria-label="Local match results and leaderboard"
+            ></aside>
+            <aside
+              id="${localMatchEventsParent}"
+              class="local-event-panel"
+              aria-live="polite"
+              aria-label="Local match event log"
             ></aside>
             <aside
               id="${matchHistoryParent}"
@@ -311,6 +337,9 @@ const gameplayPreferencesElement = getElement<HTMLElement>(
 const postMatchResultsElement = getElement<HTMLElement>(
   `#${postMatchResultsParent}`
 );
+const localMatchEventsElement = getElement<HTMLElement>(
+  `#${localMatchEventsParent}`
+);
 const matchHistoryElement = getElement<HTMLElement>(`#${matchHistoryParent}`);
 
 window.addEventListener(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, (event) => {
@@ -400,6 +429,7 @@ homeTeamSelect.addEventListener("change", () => {
 renderRemoteState();
 applyGameplayPreferencesToUi();
 renderLocalResultsPanel();
+renderLocalEventPanel();
 renderMatchHistoryPanel();
 
 async function createRoom(): Promise<void> {
@@ -524,6 +554,7 @@ async function initializeLocalDataPanels(
   }));
 
   localResultsState.players = playerLabels;
+  localEventState.players = playerLabels;
   localHistoryState.players = playerLabels;
   localHistoryState.teams = teams.map(({ displayName, id }) => ({
     displayName,
@@ -531,6 +562,7 @@ async function initializeLocalDataPanels(
   }));
   await refreshLocalHistoryPanel(dataClient);
   renderLocalResultsPanel();
+  renderLocalEventPanel();
 }
 
 async function refreshLocalHistoryPanel(
@@ -561,6 +593,8 @@ async function handlePlaySceneProjection(
   });
 
   localResultsState.projection = detail.projection;
+  localEventState.events = detail.loop.eventLog;
+  localEventState.projection = detail.projection;
 
   if (detail.projection.phase.kind !== "match-completed") {
     localResultsState.activeCompletionKey = null;
@@ -569,7 +603,9 @@ async function handlePlaySceneProjection(
     localResultsState.recordingCompletionKey = null;
     localResultsState.persistenceStatus = readWallballPersistenceStatus(localDataClient);
     localResultsState.summary = null;
+    localEventState.summary = null;
     renderLocalResultsPanel();
+    renderLocalEventPanel();
     return;
   }
 
@@ -580,6 +616,7 @@ async function handlePlaySceneProjection(
     localResultsState.recordingCompletionKey === completionKey
   ) {
     renderLocalResultsPanel();
+    renderLocalEventPanel();
     return;
   }
 
@@ -588,7 +625,9 @@ async function handlePlaySceneProjection(
   localResultsState.recordState = "recording";
   localResultsState.recordingCompletionKey = completionKey;
   localResultsState.summary = null;
+  localEventState.summary = null;
   renderLocalResultsPanel();
+  renderLocalEventPanel();
 
   try {
     const recorded = await recordLocalMatchCompletion(detail.loop, {
@@ -605,6 +644,7 @@ async function handlePlaySceneProjection(
     localResultsState.persistenceStatus = recorded.persistenceStatus;
     localResultsState.recordState = "recorded";
     localResultsState.summary = recorded.summary;
+    localEventState.summary = recorded.summary;
     await refreshLocalHistoryPanel(localDataClient);
   } catch (error) {
     if (localResultsState.activeCompletionKey !== completionKey) {
@@ -620,6 +660,7 @@ async function handlePlaySceneProjection(
     }
 
     renderLocalResultsPanel();
+    renderLocalEventPanel();
   }
 }
 
@@ -724,6 +765,82 @@ function renderLocalResultsPanel(): void {
       summary: localResultsState.summary
     })
   );
+}
+
+function renderLocalEventPanel(): void {
+  const projection = localEventState.projection;
+  const panel = projectLocalMatchEventPanel({
+    events: localEventState.events,
+    players: localEventState.players,
+    projection: projection
+      ? {
+          awayTeamName: projection.hud.awayTeamName,
+          homeTeamName: projection.hud.homeTeamName,
+          phaseKind: projection.phase.kind
+        }
+      : {
+          awayTeamName: "Away",
+          homeTeamName: "Home",
+          phaseKind: "ready-for-at-bat"
+        },
+    summary: localEventState.summary
+  });
+
+  renderLocalEventPanelProjection(panel);
+}
+
+function renderLocalEventPanelProjection(
+  panel: LocalMatchEventPanelProjection
+): void {
+  localMatchEventsElement.innerHTML = `
+    <details class="local-event-drawer" open>
+      <summary>
+        <span>${escapeHtml(panel.title)}</span>
+        <small>${escapeHtml(panel.statusLabel)}</small>
+      </summary>
+      <section class="local-event-section">
+        <h3>Recent</h3>
+        ${renderLocalEventRows(panel)}
+      </section>
+      ${
+        panel.summaryRows.length > 0
+          ? `<section class="local-event-section">
+              <h3>Recorded Summary</h3>
+              ${renderLocalSummaryRows(panel.summaryRows)}
+            </section>`
+          : ""
+      }
+    </details>
+  `;
+}
+
+function renderLocalEventRows(panel: LocalMatchEventPanelProjection): string {
+  if (panel.emptyText) {
+    return `<p class="empty-row">${escapeHtml(panel.emptyText)}</p>`;
+  }
+
+  return `<ol class="local-event-list">${panel.recentRows
+    .map(
+      (row) => `
+        <li class="is-${row.tone}">
+          <span>${escapeHtml(row.meta)}</span>
+          <strong>${escapeHtml(row.label)}</strong>
+        </li>
+      `
+    )
+    .join("")}</ol>`;
+}
+
+function renderLocalSummaryRows(rows: string[]): string {
+  return `<ul class="local-event-list local-event-summary-list">${rows
+    .map(
+      (row) => `
+        <li class="is-neutral">
+          <strong>${escapeHtml(row)}</strong>
+        </li>
+      `
+    )
+    .join("")}</ul>`;
 }
 
 function renderPostMatchPanelProjection(
