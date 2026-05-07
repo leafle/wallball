@@ -19,11 +19,14 @@ Use these commands from the repository root:
 ```sh
 npm run dev       # Start the Vite dev server
 npm test          # Run Vitest once
+npm run smoke:remote # Run remote room gameplay smoke flow
 npm run build     # Type-check and build with Vite
 npm run preview   # Preview the production build locally
 ```
 
 `npm run build` runs `tsc --noEmit` before `vite build`, so it is the fastest full TypeScript/Vite gate. `npm test` covers deterministic TypeScript modules, including rules, systems, remote room behavior, control input, fixtures, and schema shape.
+
+`npm run smoke:remote` drives a deterministic remote room path through the in-memory client, API, store, and local-loop bridge. It covers create/join, participant readiness, pitch/swing/fielding/recovery intent sequencing, match recording, and the local-play fallback when a remote room or second participant is unavailable. It does not require auth, matchmaking, or production networking.
 
 ## Gas Town Workflow
 
