@@ -82,6 +82,26 @@ describe("post-match results panel projection", () => {
       winnerLabel: "Play to the local score limit"
     });
   });
+
+  it("surfaces queued persistence without blocking the recorded result", () => {
+    expect(
+      projectPostMatchResultsPanel({
+        highScores: [],
+        persistenceStatus: {
+          pendingWrites: 1,
+          state: "queued"
+        },
+        players: [],
+        projection: completedProjection,
+        recordState: "recorded",
+        summary: completedSummary
+      })
+    ).toMatchObject({
+      statusLabel: "Queued",
+      summaryRows: ["1: cainer home-run", "1: cainer run"],
+      title: "Final"
+    });
+  });
 });
 
 const completedSummary: MatchSummary = {

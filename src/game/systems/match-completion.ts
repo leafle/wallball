@@ -1,4 +1,8 @@
-import type { WallballDataClient } from "../data/game-data-client";
+import {
+  readWallballPersistenceStatus,
+  type WallballDataClient,
+  type WallballPersistenceStatus
+} from "../data/game-data-client";
 import type { HighScore } from "../domain/high-scores";
 import type { CompletedMatch, MatchSummary } from "../domain/match-summary";
 import type { LocalMatchLoopState } from "./local-match-loop";
@@ -13,6 +17,7 @@ export interface RecordLocalMatchCompletionOptions {
 export interface RecordedLocalMatchCompletion {
   highScores: HighScore[];
   match: CompletedMatch;
+  persistenceStatus: WallballPersistenceStatus;
   summary: MatchSummary;
 }
 
@@ -34,6 +39,7 @@ export async function recordLocalMatchCompletion(
   return {
     highScores: await dataClient.getHighScores("runs"),
     match: recorded.match,
+    persistenceStatus: readWallballPersistenceStatus(dataClient),
     summary
   };
 }

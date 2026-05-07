@@ -1,7 +1,10 @@
 import { GAME_HEIGHT, GAME_WIDTH, createBaseGameConfig } from "./game/config";
 import {
   createFixtureWallballDataClient,
-  type WallballDataClient
+  createResilientWallballDataClient,
+  readWallballPersistenceStatus,
+  type WallballDataClient,
+  type WallballPersistenceStatus
 } from "./game/data/game-data-client";
 import { loadPredefinedRosters } from "./game/data/fixtures";
 import type { InteractionCallout } from "./game/domain/friend-interactions";
@@ -65,7 +68,9 @@ const localRivalryMatchup = {
 const localRivalryPlayerIds = ["cainer", "al"] as const;
 const localRivalryTeamIds = ["champions", "woodland"] as const;
 const rosters = loadPredefinedRosters();
-const localDataClient = createFixtureWallballDataClient();
+const localDataClient = createResilientWallballDataClient({
+  primary: createFixtureWallballDataClient()
+});
 const remoteClient = createRemoteRoomClient();
 
 interface RemoteUiState {
@@ -86,6 +91,7 @@ interface LocalResultsUiState {
   activeCompletionKey: string | null;
   errorMessage: string | null;
   highScores: HighScore[];
+  persistenceStatus: WallballPersistenceStatus;
   players: PostMatchPlayerLabel[];
   projection: WallballPlaySceneProjectionEventDetail["projection"] | null;
   recordState: PostMatchRecordState;
@@ -97,6 +103,10 @@ const localResultsState: LocalResultsUiState = {
   activeCompletionKey: null,
   errorMessage: null,
   highScores: [],
+  persistenceStatus: {
+    pendingWrites: 0,
+    state: "synced"
+  },
   players: [],
   projection: null,
   recordState: "idle",
@@ -469,6 +479,7 @@ async function refreshLocalHistoryPanel(
   ]);
 
   localResultsState.highScores = highScores;
+  localResultsState.persistenceStatus = readWallballPersistenceStatus(dataClient);
   localHistoryState.highScores = highScores;
   localHistoryState.matches = matches;
   localHistoryState.rivalryCallout = interactionContext.matchHistoryCallout;
@@ -485,6 +496,7 @@ async function handlePlaySceneProjection(
     localResultsState.errorMessage = null;
     localResultsState.recordState = "idle";
     localResultsState.recordingCompletionKey = null;
+    localResultsState.persistenceStatus = readWallballPersistenceStatus(localDataClient);
     localResultsState.summary = null;
     renderLocalResultsPanel();
     return;
@@ -519,6 +531,7 @@ async function handlePlaySceneProjection(
     }
 
     localResultsState.highScores = recorded.highScores;
+    localResultsState.persistenceStatus = recorded.persistenceStatus;
     localResultsState.recordState = "recorded";
     localResultsState.summary = recorded.summary;
     await refreshLocalHistoryPanel(localDataClient);
@@ -633,6 +646,7 @@ function renderLocalResultsPanel(): void {
     projectPostMatchResultsPanel({
       errorMessage: localResultsState.errorMessage,
       highScores: localResultsState.highScores,
+      persistenceStatus: localResultsState.persistenceStatus,
       players: localResultsState.players,
       projection,
       recordState: localResultsState.recordState,

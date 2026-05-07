@@ -1,3 +1,4 @@
+import type { WallballPersistenceStatus } from "../data/game-data-client";
 import type { HighScore } from "../domain/high-scores";
 import type { MatchSummary } from "../domain/match-summary";
 import type { PlaySceneLoopProjection } from "../scenes/play-scene-loop-adapter";
@@ -12,6 +13,7 @@ export interface PostMatchPlayerLabel {
 export interface ProjectPostMatchResultsPanelInput {
   errorMessage?: string | null;
   highScores: readonly HighScore[];
+  persistenceStatus?: WallballPersistenceStatus | null;
   players: readonly PostMatchPlayerLabel[];
   projection: PlaySceneLoopProjection;
   recordState: PostMatchRecordState;
@@ -42,6 +44,7 @@ const MAX_LEADERBOARD_ROWS = 5;
 export function projectPostMatchResultsPanel({
   errorMessage,
   highScores,
+  persistenceStatus,
   players,
   projection,
   recordState,
@@ -65,7 +68,7 @@ export function projectPostMatchResultsPanel({
       `${projection.hud.awayTeamName} ${projection.hud.awayScore}, ${projection.hud.homeTeamName} ${projection.hud.homeScore}`,
     leaderboardRows,
     matchupLabel: `${projection.hud.pitcherName} vs ${projection.hud.batterName}`,
-    statusLabel: statusLabel(recordState),
+    statusLabel: statusLabel(recordState, persistenceStatus),
     summaryRows: projectSummaryRows({ errorMessage, recordState, summary }),
     title: completion ? "Final" : "Match Results",
     winnerLabel: completion
@@ -100,12 +103,21 @@ function projectSummaryRows({
   return summary.notableEvents.slice(0, MAX_SUMMARY_ROWS);
 }
 
-function statusLabel(recordState: PostMatchRecordState): string {
+function statusLabel(
+  recordState: PostMatchRecordState,
+  persistenceStatus?: WallballPersistenceStatus | null
+): string {
   if (recordState === "recording") {
     return "Recording";
   }
 
   if (recordState === "recorded") {
+    if (persistenceStatus?.state === "queued") {
+      return persistenceStatus.pendingWrites > 1
+        ? `Queued (${persistenceStatus.pendingWrites})`
+        : "Queued";
+    }
+
     return "Recorded";
   }
 

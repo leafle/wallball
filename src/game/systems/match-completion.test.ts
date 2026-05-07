@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createFixtureWallballDataClient } from "../data/game-data-client";
+import {
+  createFixtureWallballDataClient,
+  createResilientWallballDataClient,
+  type WallballDataClient
+} from "../data/game-data-client";
 import { loadPredefinedRosters } from "../data/fixtures";
 import type { TeamRoster } from "../domain/rosters";
 import {
@@ -61,6 +65,29 @@ describe("local match completion recording", () => {
     ]);
   });
 
+  it("reports queued persistence when local fallback retains the completed match", async () => {
+    const completed = pitchSwingRecover(createScoreLimitLoopState());
+    const client = createResilientWallballDataClient({
+      primary: createUnavailableDataClient()
+    });
+
+    const result = await recordLocalMatchCompletion(completed, {
+      dataClient: client,
+      id: "local-match-queued",
+      playedAt: "2026-05-06T18:00:00.000Z"
+    });
+
+    expect(result.persistenceStatus).toEqual({
+      pendingWrites: 1,
+      state: "queued"
+    });
+    await expect(client.getMatchHistory("cainer")).resolves.toMatchObject([
+      {
+        id: "local-match-queued"
+      }
+    ]);
+  });
+
   it("rejects incomplete local matches before writing data", async () => {
     const client = createFixtureWallballDataClient();
 
@@ -84,6 +111,33 @@ function createScoreLimitLoopState(): LocalMatchLoopState {
     recoveryRadius: 600,
     scoreLimit: 1
   });
+}
+
+function createUnavailableDataClient(): WallballDataClient {
+  return {
+    async getHighScores(category) {
+      return failUnavailable(category);
+    },
+    async getInteractionContext(matchup) {
+      return failUnavailable(matchup);
+    },
+    async getMatchHistory(playerId) {
+      return failUnavailable(playerId);
+    },
+    async listPlayers() {
+      return failUnavailable();
+    },
+    async listTeams() {
+      return failUnavailable();
+    },
+    async recordMatch(match) {
+      return failUnavailable(match);
+    }
+  };
+}
+
+function failUnavailable<T>(_value?: unknown): Promise<T> {
+  return Promise.reject(new Error("data service unavailable"));
 }
 
 function getRoster(teamId: string): TeamRoster {
