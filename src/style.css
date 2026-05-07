@@ -789,6 +789,65 @@ label {
   gap: 12px;
 }
 
+.gameplay-preferences-panel {
+  gap: 14px;
+}
+
+.preferences-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preferences-header h2 {
+  margin: 0;
+}
+
+.preferences-header button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.preference-toggle-grid,
+.preference-matchup-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.preference-toggle-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preference-matchup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preference-checkbox {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #505849;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #292b26;
+}
+
+.preference-checkbox input {
+  width: 18px;
+  height: 18px;
+  accent-color: #f5c84b;
+}
+
+.preference-checkbox span {
+  min-width: 0;
+  color: #f6f2e8;
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
 .room-state {
   display: grid;
   min-height: 46px;
@@ -969,6 +1028,7 @@ label {
   .title-row,
   .play-surface-grid,
   .connection-grid,
+  .preference-matchup-grid,
   .activity-grid {
     grid-template-columns: 1fr;
   }
@@ -980,6 +1040,10 @@ label {
 
   .intent-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preference-toggle-grid {
+    grid-template-columns: 1fr;
   }
 
   .control-help-header,

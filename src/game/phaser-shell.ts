@@ -2,9 +2,11 @@ import type Phaser from "phaser";
 
 import { createBaseGameConfig } from "./config";
 import type { GameplayControlIntent } from "./input/game-controls";
+import type { GameplayPreferences } from "./preferences";
 import {
   dispatchWallballPlaySceneControlIntent,
-  WALLBALL_PLAY_SCENE_KEY
+  WALLBALL_PLAY_SCENE_KEY,
+  updateWallballPlayScenePreferences
 } from "./scenes/play-scene";
 
 type WallballPlaySceneControlTarget = ThisParameterType<
@@ -30,15 +32,31 @@ export interface MountedPhaserGameShell {
   ) => void;
   destroy: () => void;
   game: PhaserGameLike;
+  setGameplayPreferences: (preferences: GameplayPreferences) => void;
 }
 
 type LoadPhaserRuntime = () => Promise<PhaserRuntime>;
 
+export interface MountPhaserGameShellOptions {
+  preferences?: GameplayPreferences;
+}
+
 export async function mountPhaserGameShell(
-  loadRuntime: LoadPhaserRuntime = loadPhaserRuntime
+  optionsOrLoadRuntime: MountPhaserGameShellOptions | LoadPhaserRuntime = {},
+  fallbackLoadRuntime: LoadPhaserRuntime = loadPhaserRuntime
 ): Promise<MountedPhaserGameShell> {
+  const options =
+    typeof optionsOrLoadRuntime === "function" ? {} : optionsOrLoadRuntime;
+  const loadRuntime =
+    typeof optionsOrLoadRuntime === "function"
+      ? optionsOrLoadRuntime
+      : fallbackLoadRuntime;
   const runtime = await loadRuntime();
-  const game = new runtime.Game(createBaseGameConfig());
+  const game = new runtime.Game(
+    createBaseGameConfig({
+      gameplayPreferences: options.preferences
+    })
+  );
 
   return {
     dispatchControlIntent: (intent, timeMs = currentTimeMs()) => {
@@ -55,7 +73,17 @@ export async function mountPhaserGameShell(
     destroy: () => {
       game.destroy(true);
     },
-    game
+    game,
+    setGameplayPreferences: (preferences) => {
+      const scene = getWallballPlayScene(game);
+
+      if (scene && typeof scene === "object") {
+        updateWallballPlayScenePreferences.call(
+          scene as WallballPlaySceneControlTarget,
+          preferences
+        );
+      }
+    }
   };
 }
 

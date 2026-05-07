@@ -7,6 +7,7 @@ import {
   type WallballPlaySceneProjectionEventDetail,
   updateWallballPlayScene
 } from "./play-scene";
+import { DEFAULT_GAMEPLAY_PREFERENCES } from "../preferences";
 
 type FakePlaySceneRuntime = NonNullable<
   ThisParameterType<typeof createWallballPlayScene>["wallballPlay"]
@@ -308,6 +309,59 @@ describe("createWallballPlayScene", () => {
         expect.objectContaining({ kind: "text", text: "JSack vs Al" })
       ])
     );
+  });
+
+  it("applies local preferences to setup, solo assist, and reduced feedback rendering", () => {
+    const calls: DrawCall[] = [];
+    const scene = createFakeSceneContext(calls);
+
+    createWallballPlayScene.call(scene, {
+      preferences: {
+        ...DEFAULT_GAMEPLAY_PREFERENCES,
+        preferredMatchup: {
+          awayTeamId: "ej",
+          homeTeamId: "team-cainer"
+        },
+        reducedFeedbackIntensity: true,
+        soloAssistEnabled: false
+      }
+    });
+
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "text", text: "Away EJ" }),
+        expect.objectContaining({ kind: "text", text: "Home Team Cainer" }),
+        expect.objectContaining({ kind: "text", text: "EJ 0" }),
+        expect.objectContaining({ kind: "text", text: "Team Cainer 0" })
+      ])
+    );
+    expect(scene.wallballPlay?.adapter.soloAssist.enabled).toBe(false);
+
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "pitch",
+        source: "keyboard"
+      },
+      1_000
+    );
+    dispatchWallballPlaySceneControlIntent.call(
+      scene,
+      {
+        kind: "swing",
+        source: "keyboard"
+      },
+      1_180
+    );
+
+    expect(textCall(calls, "Swing: perfect contact")).toEqual(
+      expect.objectContaining({
+        x: 52,
+        y: 622
+      })
+    );
+    expect(calls.some((call) => call.text === "Recover the ball")).toBe(false);
+    expect(calls.some((call) => call.text === "Target hit")).toBe(false);
   });
 
   it("toggles pause state and quick restarts through local scene controls", () => {

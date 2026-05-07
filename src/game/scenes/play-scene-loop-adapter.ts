@@ -122,6 +122,12 @@ export interface SelectPlaySceneTeamInput {
   teamId: string;
 }
 
+export interface ConfigurePlaySceneLoopAdapterInput {
+  awayTeamId?: string;
+  homeTeamId?: string;
+  soloAssist?: PlaySceneSoloAssistInput;
+}
+
 export interface PlaySceneSetupProjection extends PlaySceneMatchSetupState {
   awayTeamName: string;
   homeTeamName: string;
@@ -277,6 +283,39 @@ export function selectPlaySceneLoopTeam(
       ...adapter.setup,
       [side === "away" ? "awayTeamId" : "homeTeamId"]: teamId
     }
+  };
+}
+
+export function configurePlaySceneLoopAdapter(
+  adapter: PlaySceneLoopAdapter,
+  { awayTeamId, homeTeamId, soloAssist }: ConfigurePlaySceneLoopAdapterInput
+): PlaySceneLoopAdapter {
+  const nextAwayTeamId = awayTeamId ?? adapter.setup.awayTeamId;
+  const nextHomeTeamId = homeTeamId ?? adapter.setup.homeTeamId;
+
+  assertKnownTeam(adapter.setup, nextAwayTeamId);
+  assertKnownTeam(adapter.setup, nextHomeTeamId);
+
+  const nextSoloAssist =
+    soloAssist === undefined
+      ? adapter.soloAssist
+      : normalizeSoloAssist(soloAssist, adapter.tuning.assist);
+  const nextActionAtMs =
+    !adapter.soloAssist.enabled &&
+    nextSoloAssist.enabled &&
+    adapter.loop.phase.kind === "ready-for-at-bat"
+      ? adapter.lastAdvancedAtMs + nextSoloAssist.pitchDelayMs
+      : adapter.nextActionAtMs;
+
+  return {
+    ...adapter,
+    nextActionAtMs,
+    setup: {
+      ...adapter.setup,
+      awayTeamId: nextAwayTeamId,
+      homeTeamId: nextHomeTeamId
+    },
+    soloAssist: nextSoloAssist
   };
 }
 

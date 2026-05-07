@@ -20,6 +20,15 @@ import {
   mountPhaserGameShell,
   type MountedPhaserGameShell
 } from "./game/phaser-shell";
+import {
+  areGameplayPreferencesEqual,
+  loadGameplayPreferences,
+  resetGameplayPreferences,
+  saveGameplayPreferences,
+  updateGameplayPreferences,
+  type GameplayPreferencePatch,
+  type GameplayPreferences
+} from "./game/preferences";
 import { createRemoteRoomClient } from "./game/remote/room-client";
 import type {
   RemoteAssignment,
@@ -59,10 +68,10 @@ if (!app) {
   throw new Error("Missing #app mount element");
 }
 
-const config = createBaseGameConfig();
+const appElement = app;
 const battingPrototypeParent = "batting-prototype";
 const controlHelpParent = "control-help";
-const controlHelpStorageKey = "wallball.controlHelp.dismissed";
+const gameplayPreferencesParent = "gameplay-preferences";
 const postMatchResultsParent = "post-match-results";
 const matchHistoryParent = "match-history";
 const localRivalryMatchup = {
@@ -72,6 +81,8 @@ const localRivalryMatchup = {
 const localRivalryPlayerIds = ["cainer", "al"] as const;
 const localRivalryTeamIds = ["champions", "woodland"] as const;
 const rosters = loadPredefinedRosters();
+const validGameplayPreferenceTeamIds = rosters.map((roster) => roster.id);
+const config = createBaseGameConfig();
 const localDataClient = createResilientWallballDataClient({
   primary: createFixtureWallballDataClient()
 });
@@ -142,13 +153,15 @@ const localHistoryState: LocalHistoryUiState = {
 };
 
 let phaserShell: MountedPhaserGameShell | null = null;
-let controlHelpDismissed = readControlHelpDismissed();
+let gameplayPreferences = loadGameplayPreferences({
+  validTeamIds: validGameplayPreferenceTeamIds
+});
 
 const rosterOptions = rosters
   .map((team) => `<option value="${team.id}">${team.displayName}</option>`)
   .join("");
 
-app.innerHTML = `
+appElement.innerHTML = `
   <main class="app-shell">
     <section class="game-panel" aria-labelledby="wallball-title">
       <div class="title-row">
@@ -229,6 +242,11 @@ app.innerHTML = `
       <div id="room-state" class="room-state" aria-live="polite">
         <span>No room connected</span>
       </div>
+      <aside
+        id="${gameplayPreferencesParent}"
+        class="control-group gameplay-preferences-panel"
+        aria-labelledby="gameplay-preferences-title"
+      ></aside>
       <div class="intent-grid" aria-label="Player intents">
         <button id="ready-intent" type="button">Ready</button>
         <button id="pitch-intent" type="button" data-control-action="pitch">Pitch</button>
@@ -287,6 +305,9 @@ const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
 const controlHelpElement = getElement<HTMLElement>(`#${controlHelpParent}`);
+const gameplayPreferencesElement = getElement<HTMLElement>(
+  `#${gameplayPreferencesParent}`
+);
 const postMatchResultsElement = getElement<HTMLElement>(
   `#${postMatchResultsParent}`
 );
@@ -299,16 +320,19 @@ window.addEventListener(WALLBALL_PLAY_SCENE_PROJECTION_EVENT, (event) => {
 });
 
 void initializeLocalDataPanels(localDataClient).catch(reportLocalResultsError);
-void mountPhaserGameShell()
+void mountPhaserGameShell({
+  preferences: gameplayPreferences
+})
   .then((mounted) => {
     phaserShell = mounted;
+    phaserShell.setGameplayPreferences(gameplayPreferences);
   })
   .catch(reportError);
 mountBattingPrototype(getElement<HTMLDivElement>(`#${battingPrototypeParent}`));
 void mountKeyboardGameplayControls(window, handleGameplayControlIntent);
 void mountTouchGameplayControls(remoteConsoleElement, handleGameplayControlIntent);
 
-homeTeamSelect.value = rosters[1]?.id ?? rosters[0]?.id ?? "";
+syncRemoteMatchupControls();
 joinCodeInput.value = new URLSearchParams(window.location.search).get("room") ?? "";
 
 createRoomForm.addEventListener("submit", (event) => {
@@ -335,14 +359,46 @@ controlHelpElement.addEventListener("click", (event) => {
       : undefined;
 
   if (action === "dismiss" || action === "show") {
-    controlHelpDismissed = action === "dismiss";
-    writeControlHelpDismissed(controlHelpDismissed);
-    renderControlHelpPanel();
+    commitGameplayPreferencePatch({
+      controlHelpVisible: action === "show"
+    });
   }
 });
 
+gameplayPreferencesElement.addEventListener("change", (event) => {
+  handleGameplayPreferenceChange(event);
+});
+
+gameplayPreferencesElement.addEventListener("click", (event) => {
+  const action =
+    event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-gameplay-preference-action]")
+          ?.dataset.gameplayPreferenceAction
+      : undefined;
+
+  if (action === "reset") {
+    resetGameplayPreferenceState();
+  }
+});
+
+awayTeamSelect.addEventListener("change", () => {
+  commitGameplayPreferencePatch({
+    preferredMatchup: {
+      awayTeamId: awayTeamSelect.value
+    }
+  });
+});
+
+homeTeamSelect.addEventListener("change", () => {
+  commitGameplayPreferencePatch({
+    preferredMatchup: {
+      homeTeamId: homeTeamSelect.value
+    }
+  });
+});
+
 renderRemoteState();
-renderControlHelpPanel();
+applyGameplayPreferencesToUi();
 renderLocalResultsPanel();
 renderMatchHistoryPanel();
 
@@ -497,6 +553,13 @@ async function refreshLocalHistoryPanel(
 async function handlePlaySceneProjection(
   detail: WallballPlaySceneProjectionEventDetail
 ): Promise<void> {
+  commitGameplayPreferencePatch({
+    preferredMatchup: {
+      awayTeamId: detail.projection.setup.awayTeamId,
+      homeTeamId: detail.projection.setup.homeTeamId
+    }
+  });
+
   localResultsState.projection = detail.projection;
 
   if (detail.projection.phase.kind !== "match-completed") {
@@ -721,7 +784,7 @@ function renderLeaderboardRows(panel: PostMatchResultsPanelProjection): string {
 function renderControlHelpPanel(): void {
   const panel = projectControlHelpPanel({
     controlItems: getGameplayControlHelpItems(),
-    dismissed: controlHelpDismissed
+    dismissed: !gameplayPreferences.controlHelpVisible
   });
 
   if (panel.dismissed) {
@@ -770,28 +833,172 @@ function renderControlHelpPanel(): void {
   `;
 }
 
-function readControlHelpDismissed(): boolean {
-  if (typeof localStorage === "undefined") {
-    return false;
-  }
-
-  try {
-    return localStorage.getItem(controlHelpStorageKey) === "true";
-  } catch {
-    return false;
-  }
+function renderGameplayPreferencesPanel(): void {
+  gameplayPreferencesElement.innerHTML = `
+    <div class="preferences-header">
+      <h2 id="gameplay-preferences-title">Preferences</h2>
+      <button type="button" data-gameplay-preference-action="reset">Reset</button>
+    </div>
+    <div class="preference-toggle-grid">
+      ${renderPreferenceCheckbox(
+        "controlHelpVisible",
+        "Show controls",
+        gameplayPreferences.controlHelpVisible
+      )}
+      ${renderPreferenceCheckbox(
+        "audioMuted",
+        "Mute",
+        gameplayPreferences.audioMuted
+      )}
+      ${renderPreferenceCheckbox(
+        "soloAssistEnabled",
+        "Solo assist",
+        gameplayPreferences.soloAssistEnabled
+      )}
+      ${renderPreferenceCheckbox(
+        "reducedFeedbackIntensity",
+        "Reduced feedback",
+        gameplayPreferences.reducedFeedbackIntensity
+      )}
+    </div>
+    <div class="preference-matchup-grid">
+      <label>
+        Away default
+        <select data-gameplay-preference="preferredAwayTeamId">
+          ${renderTeamOptions(gameplayPreferences.preferredMatchup.awayTeamId)}
+        </select>
+      </label>
+      <label>
+        Home default
+        <select data-gameplay-preference="preferredHomeTeamId">
+          ${renderTeamOptions(gameplayPreferences.preferredMatchup.homeTeamId)}
+        </select>
+      </label>
+    </div>
+  `;
 }
 
-function writeControlHelpDismissed(dismissed: boolean): void {
-  if (typeof localStorage === "undefined") {
+function handleGameplayPreferenceChange(event: Event): void {
+  const target = event.target;
+
+  if (
+    !(target instanceof HTMLInputElement) &&
+    !(target instanceof HTMLSelectElement)
+  ) {
     return;
   }
 
-  try {
-    localStorage.setItem(controlHelpStorageKey, String(dismissed));
-  } catch {
-    // Local storage can be unavailable; the in-memory state still updates.
+  const preference = target.dataset.gameplayPreference;
+
+  if (target instanceof HTMLInputElement && target.type === "checkbox") {
+    commitGameplayPreferencePatch(booleanPreferencePatch(preference, target.checked));
+    return;
   }
+
+  if (target instanceof HTMLSelectElement) {
+    if (preference === "preferredAwayTeamId") {
+      commitGameplayPreferencePatch({
+        preferredMatchup: {
+          awayTeamId: target.value
+        }
+      });
+    } else if (preference === "preferredHomeTeamId") {
+      commitGameplayPreferencePatch({
+        preferredMatchup: {
+          homeTeamId: target.value
+        }
+      });
+    }
+  }
+}
+
+function booleanPreferencePatch(
+  preference: string | undefined,
+  value: boolean
+): GameplayPreferencePatch {
+  if (
+    preference === "audioMuted" ||
+    preference === "controlHelpVisible" ||
+    preference === "reducedFeedbackIntensity" ||
+    preference === "soloAssistEnabled"
+  ) {
+    return {
+      [preference]: value
+    };
+  }
+
+  return {};
+}
+
+function commitGameplayPreferencePatch(patch: GameplayPreferencePatch): void {
+  const next = updateGameplayPreferences(gameplayPreferences, patch, {
+    validTeamIds: validGameplayPreferenceTeamIds
+  });
+
+  if (areGameplayPreferencesEqual(gameplayPreferences, next)) {
+    return;
+  }
+
+  gameplayPreferences = next;
+  saveGameplayPreferences(gameplayPreferences, {
+    validTeamIds: validGameplayPreferenceTeamIds
+  });
+  phaserShell?.setGameplayPreferences(gameplayPreferences);
+  applyGameplayPreferencesToUi();
+}
+
+function resetGameplayPreferenceState(): void {
+  gameplayPreferences = resetGameplayPreferences({
+    validTeamIds: validGameplayPreferenceTeamIds
+  });
+  phaserShell?.setGameplayPreferences(gameplayPreferences);
+  applyGameplayPreferencesToUi();
+}
+
+function applyGameplayPreferencesToUi(): void {
+  appElement.classList.toggle("is-audio-muted", gameplayPreferences.audioMuted);
+  appElement.classList.toggle(
+    "is-reduced-feedback",
+    gameplayPreferences.reducedFeedbackIntensity
+  );
+  syncRemoteMatchupControls();
+  renderGameplayPreferencesPanel();
+  renderControlHelpPanel();
+}
+
+function syncRemoteMatchupControls(): void {
+  awayTeamSelect.value = gameplayPreferences.preferredMatchup.awayTeamId;
+  homeTeamSelect.value = gameplayPreferences.preferredMatchup.homeTeamId;
+}
+
+function renderPreferenceCheckbox(
+  preference: keyof Omit<GameplayPreferences, "preferredMatchup">,
+  label: string,
+  checked: boolean
+): string {
+  return `
+    <label class="preference-checkbox">
+      <input
+        type="checkbox"
+        data-gameplay-preference="${preference}"
+        ${checked ? "checked" : ""}
+      />
+      <span>${escapeHtml(label)}</span>
+    </label>
+  `;
+}
+
+function renderTeamOptions(selectedTeamId: string): string {
+  return rosters
+    .map(
+      (team) => `
+        <option
+          value="${escapeHtml(team.id)}"
+          ${team.id === selectedTeamId ? "selected" : ""}
+        >${escapeHtml(team.displayName)}</option>
+      `
+    )
+    .join("");
 }
 
 function reportLocalResultsError(error: unknown): void {

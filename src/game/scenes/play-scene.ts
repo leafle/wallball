@@ -1,8 +1,14 @@
 import { GAME_HEIGHT, GAME_WIDTH } from "../dimensions";
+import { loadPredefinedRosters } from "../data/fixtures";
 import type { GameplayControlIntent } from "../input/game-controls";
+import {
+  createPlaySceneAdapterInputFromPreferences,
+  type GameplayPreferences
+} from "../preferences";
 import {
   advancePlaySceneLoopAdapter,
   applyPlaySceneControlIntent,
+  configurePlaySceneLoopAdapter,
   createPlaySceneLoopAdapter,
   projectPlaySceneLoopState,
   selectPlaySceneLoopTeam,
@@ -72,6 +78,7 @@ interface PlaySceneRuntime {
   adapter: PlaySceneLoopAdapter;
   ball: SceneObject;
   feedback: PlaySceneFeedbackObjects;
+  feedbackIntensity: PlaySceneFeedbackIntensity;
   fielders: PlaySceneFielderObjects[];
   hud: PlaySceneHudObjects;
   lastProjectionEventKey: string;
@@ -113,6 +120,12 @@ interface PlaySceneSetupObjects {
   start: SceneObject;
 }
 
+export interface WallballPlaySceneOptions {
+  preferences?: GameplayPreferences;
+}
+
+type PlaySceneFeedbackIntensity = "full" | "reduced";
+
 const COLORS = {
   ball: 0xfffaf0,
   batter: 0xfffaf0,
@@ -127,28 +140,47 @@ const COLORS = {
   wallTarget: 0xf5c84b
 } as const;
 
-export const WALLBALL_PLAY_SCENE_CONFIG = {
-  key: WALLBALL_PLAY_SCENE_KEY,
-  create: createWallballPlayScene,
-  update: updateWallballPlayScene
-};
+export const WALLBALL_PLAY_SCENE_CONFIG = createWallballPlaySceneConfig();
 
-export function createWallballPlayScene(this: PlaySceneContext): void {
-  const adapter = createPlaySceneLoopAdapter();
+export function createWallballPlaySceneConfig(
+  options: WallballPlaySceneOptions = {}
+) {
+  return {
+    key: WALLBALL_PLAY_SCENE_KEY,
+    create(this: PlaySceneContext): void {
+      createWallballPlayScene.call(this, options);
+    },
+    update: updateWallballPlayScene
+  };
+}
+
+export function createWallballPlayScene(
+  this: PlaySceneContext,
+  options: WallballPlaySceneOptions = {}
+): void {
+  const adapter = createPlaySceneLoopAdapter(
+    createAdapterInputFromPreferences(options.preferences)
+  );
   const projection = projectPlaySceneLoopState(adapter);
+  const feedbackIntensity = feedbackIntensityFromPreferences(options.preferences);
 
   drawBackdrop.call(this);
   drawWallAndTarget.call(this, projection);
   drawCourt.call(this);
   const actors = drawActors.call(this, projection);
   const hud = drawHud.call(this, projection.hud);
-  const feedback = drawFeedback.call(this, projection.feedback);
+  const feedback = drawFeedback.call(
+    this,
+    projection.feedback,
+    feedbackIntensity
+  );
   const setup = drawSetupControls.call(this, projection.setup);
 
   this.wallballPlay = {
     adapter,
     ball: actors.ball,
     feedback,
+    feedbackIntensity,
     fielders: actors.fielders,
     hud,
     lastProjectionEventKey: "",
@@ -169,6 +201,26 @@ export function updateWallballPlayScene(
   }
 
   runtime.adapter = advancePlaySceneLoopAdapter(runtime.adapter, timeMs);
+  renderAndEmitProjection(this, runtime);
+}
+
+export function updateWallballPlayScenePreferences(
+  this: PlaySceneContext,
+  preferences: GameplayPreferences
+): void {
+  const runtime = this.wallballPlay;
+
+  if (!runtime) {
+    return;
+  }
+
+  runtime.feedbackIntensity = feedbackIntensityFromPreferences(preferences);
+  runtime.adapter = configurePlaySceneLoopAdapter(
+    runtime.adapter,
+    createPlaySceneAdapterInputFromPreferences(preferences, {
+      validTeamIds: runtime.adapter.setup.teams.map((team) => team.id)
+    })
+  );
   renderAndEmitProjection(this, runtime);
 }
 
@@ -368,7 +420,8 @@ function drawHud(
 
 function drawFeedback(
   this: PlaySceneContext,
-  feedback: PlaySceneLoopProjection["feedback"]
+  feedback: PlaySceneLoopProjection["feedback"],
+  intensity: PlaySceneFeedbackIntensity
 ): PlaySceneFeedbackObjects {
   this.add.rectangle(294, 656, 508, 82, COLORS.hud, 0.58).setStrokeStyle?.(
     2,
@@ -379,8 +432,13 @@ function drawFeedback(
   return {
     primary: addFeedbackText.call(this, 52, 622, feedback.primary.text),
     result: addFeedbackText.call(this, 52, 678, feedbackResultText(feedback)),
-    secondary: addFeedbackText.call(this, 52, 650, feedback.secondary?.text ?? ""),
-    wall: addFeedbackText.call(this, 584, 202, feedback.wall?.text ?? "")
+    secondary: addFeedbackText.call(
+      this,
+      52,
+      650,
+      feedbackSecondaryText(feedback, intensity)
+    ),
+    wall: addFeedbackText.call(this, 584, 202, feedbackWallText(feedback, intensity))
   };
 }
 
@@ -501,7 +559,11 @@ function renderProjection(
   projection: PlaySceneLoopProjection
 ): void {
   renderHud(runtime.hud, projection.hud);
-  renderFeedback(runtime.feedback, projection.feedback);
+  renderFeedback(
+    runtime.feedback,
+    projection.feedback,
+    runtime.feedbackIntensity
+  );
   renderSetup(runtime.setup, projection.setup, projection.runState);
   runtime.ball.setPosition?.(
     projection.ball.position.x,
@@ -614,6 +676,8 @@ function projectionEventKey(projection: PlaySceneLoopProjection): string {
     projection.hud.homeScore,
     projection.hud.batterName,
     projection.hud.pitcherName,
+    projection.setup.awayTeamId,
+    projection.setup.homeTeamId,
     projection.feedback.primary.text,
     projection.feedback.secondary?.text ?? "",
     projection.feedback.result?.text ?? "",
@@ -657,12 +721,13 @@ function renderHud(
 
 function renderFeedback(
   feedbackObjects: PlaySceneFeedbackObjects,
-  feedback: PlaySceneLoopProjection["feedback"]
+  feedback: PlaySceneLoopProjection["feedback"],
+  intensity: PlaySceneFeedbackIntensity
 ): void {
   feedbackObjects.primary.setText?.(feedback.primary.text);
-  feedbackObjects.secondary.setText?.(feedback.secondary?.text ?? "");
+  feedbackObjects.secondary.setText?.(feedbackSecondaryText(feedback, intensity));
   feedbackObjects.result.setText?.(feedbackResultText(feedback));
-  feedbackObjects.wall.setText?.(feedback.wall?.text ?? "");
+  feedbackObjects.wall.setText?.(feedbackWallText(feedback, intensity));
 }
 
 function feedbackResultText(
@@ -673,6 +738,42 @@ function feedbackResultText(
   }
 
   return feedback.result.text;
+}
+
+function feedbackSecondaryText(
+  feedback: PlaySceneLoopProjection["feedback"],
+  intensity: PlaySceneFeedbackIntensity
+): string {
+  return intensity === "reduced" ? "" : feedback.secondary?.text ?? "";
+}
+
+function feedbackWallText(
+  feedback: PlaySceneLoopProjection["feedback"],
+  intensity: PlaySceneFeedbackIntensity
+): string {
+  return intensity === "reduced" ? "" : feedback.wall?.text ?? "";
+}
+
+function feedbackIntensityFromPreferences(
+  preferences: GameplayPreferences | undefined
+): PlaySceneFeedbackIntensity {
+  return preferences?.reducedFeedbackIntensity ? "reduced" : "full";
+}
+
+function createAdapterInputFromPreferences(
+  preferences: GameplayPreferences | undefined
+) {
+  if (!preferences) {
+    return {};
+  }
+
+  return createPlaySceneAdapterInputFromPreferences(preferences, {
+    validTeamIds: preferencesValidTeamIds()
+  });
+}
+
+function preferencesValidTeamIds(): string[] {
+  return loadPredefinedRosters().map((team) => team.id);
 }
 
 function renderSetup(

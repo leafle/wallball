@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createBaseGameConfig } from "./config";
 import { mountPhaserGameShell } from "./phaser-shell";
+import { DEFAULT_GAMEPLAY_PREFERENCES } from "./preferences";
 import { createWallballPlayScene } from "./scenes/play-scene";
 
 describe("mountPhaserGameShell", () => {
@@ -109,6 +110,45 @@ describe("mountPhaserGameShell", () => {
 
     expect(requestedSceneKey).toBe("wallball-play");
     expect(scene.wallballPlay?.adapter.loop.phase.kind).toBe("pitch-in-flight");
+  });
+
+  it("updates gameplay preferences through Phaser's getScene lookup", async () => {
+    let requestedSceneKey = "";
+    const scene = createFakeSceneContext();
+    createWallballPlayScene.call(scene);
+    class FakeGame {
+      scene = {
+        getScene: (key: string) => {
+          requestedSceneKey = key;
+
+          return scene;
+        }
+      };
+
+      destroy(): void {
+        // no-op fake
+      }
+    }
+
+    const mounted = await mountPhaserGameShell(async () => ({
+      Game: FakeGame
+    }));
+
+    mounted.setGameplayPreferences({
+      ...DEFAULT_GAMEPLAY_PREFERENCES,
+      preferredMatchup: {
+        awayTeamId: "ej",
+        homeTeamId: "team-cainer"
+      },
+      soloAssistEnabled: false
+    });
+
+    expect(requestedSceneKey).toBe("wallball-play");
+    expect(scene.wallballPlay?.adapter.setup).toMatchObject({
+      awayTeamId: "ej",
+      homeTeamId: "team-cainer"
+    });
+    expect(scene.wallballPlay?.adapter.soloAssist.enabled).toBe(false);
   });
 });
 
