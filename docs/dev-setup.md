@@ -17,13 +17,14 @@ npm install
 Use these commands from the repository root:
 
 ```sh
-npm run dev       # Start the Vite dev server
-npm test          # Run Vitest once
-npm run build     # Type-check and build with Vite
-npm run preview   # Preview the production build locally
+npm run dev         # Start the Vite dev server
+npm run smoke:local # Run the local playable smoke path
+npm test            # Run Vitest once
+npm run build       # Type-check and build with Vite
+npm run preview     # Preview the production build locally
 ```
 
-`npm run build` runs `tsc --noEmit` before `vite build`, so it is the fastest full TypeScript/Vite gate. `npm test` covers deterministic TypeScript modules, including rules, systems, remote room behavior, control input, fixtures, and schema shape.
+`npm run smoke:local` starts the local playable shell through the real Phaser scene wiring with a fake runtime, drives fielder movement plus pitch/swing controls, and verifies score/result visibility without console errors. It does not require remote multiplayer or Dolt. `npm run build` runs `tsc --noEmit` before `vite build`, so it is the fastest full TypeScript/Vite gate. `npm test` covers deterministic TypeScript modules, including rules, systems, remote room behavior, control input, fixtures, and schema shape.
 
 ## Gas Town Workflow
 
