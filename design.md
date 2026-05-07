@@ -24,6 +24,17 @@ The game should feel modern in presentation but retro in gameplay values:
 
 The first version should use placeholder art and programmatic shapes where needed. Asset polish can come after the loop, records, and friend interactions are working.
 
+## Playfield Palette
+
+The default playfield palette should keep the main wall-facing camera readable:
+
+- Chestnut brown wall
+- Dusty brown pitcher's mound
+- Bright green field
+- Cement grey area from pitcher's mound to batter
+
+Use this palette for placeholder shapes and later art passes so the wall, mound, field, and batter lane stay visually distinct during pitch, swing, rebound, and fielding states.
+
 ## V0 Feature Scope
 
 The v0 slice should include:
