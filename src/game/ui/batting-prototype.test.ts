@@ -8,6 +8,7 @@ describe("batting prototype markup", () => {
 
     expect(markup).toContain("--pitcher-x: 50%;");
     expect(markup).toContain("class=\"wall-target\"");
+    expect(markup).toContain("class=\"pitcher-mound\"");
     expect(markup).toContain("class=\"pitcher-marker\"");
     expect(markup).toContain("class=\"batter-marker\"");
     expect(markup).toContain("class=\"control-zone control-zone-pitch\"");

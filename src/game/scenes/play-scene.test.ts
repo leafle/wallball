@@ -19,6 +19,8 @@ type FakePlaySceneRuntime = NonNullable<
 >;
 
 interface DrawCall {
+  alpha?: number;
+  color?: number;
   kind: "circle" | "rectangle" | "text";
   height?: number;
   onPointerDown?: () => void;
@@ -102,6 +104,49 @@ describe("createWallballPlayScene", () => {
         expect.objectContaining({ kind: "text", text: "Danny vs Cainer" }),
         expect.objectContaining({ kind: "text", text: "Pause" }),
         expect.objectContaining({ kind: "text", text: "Restart" })
+      ])
+    );
+  });
+
+  it("uses the documented wall-facing playfield palette", () => {
+    const calls: DrawCall[] = [];
+
+    createWallballPlayScene.call(createFakeSceneContext(calls));
+
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          color: 0x38b94a,
+          height: 524,
+          kind: "rectangle",
+          width: 1184,
+          x: 640,
+          y: 418
+        }),
+        expect.objectContaining({
+          color: 0x7b3f2a,
+          height: 180,
+          kind: "rectangle",
+          width: 910,
+          x: 640,
+          y: 146
+        }),
+        expect.objectContaining({
+          color: 0x8f938a,
+          height: 330,
+          kind: "rectangle",
+          width: 440,
+          x: 640,
+          y: 482
+        }),
+        expect.objectContaining({
+          color: 0x9a755b,
+          height: 38,
+          kind: "rectangle",
+          width: 132,
+          x: 640,
+          y: 598
+        })
       ])
     );
   });
@@ -502,13 +547,13 @@ function createFakeSceneContext(calls: DrawCall[]): FakeSceneContext {
 
   return {
     add: {
-      circle: (x, y, radius) => {
-        calls.push({ kind: "circle", radius, x, y });
+      circle: (x, y, radius, color, alpha) => {
+        calls.push({ alpha, color, kind: "circle", radius, x, y });
 
         return sceneObject;
       },
-      rectangle: (x, y, width, height) => {
-        calls.push({ height, kind: "rectangle", width, x, y });
+      rectangle: (x, y, width, height, color, alpha) => {
+        calls.push({ alpha, color, height, kind: "rectangle", width, x, y });
 
         return sceneObject;
       },

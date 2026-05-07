@@ -190,6 +190,7 @@ export function renderBattingPrototypeMarkup(): string {
       <div class="wall-target" aria-hidden="true"></div>
       <div class="camera-depth-lines" aria-hidden="true"></div>
       <div class="active-play-corridor" aria-hidden="true"></div>
+      <div class="pitcher-mound" aria-hidden="true"></div>
       <div class="pitcher-marker"></div>
       <div class="batter-marker"></div>
       <div class="timing-meter" aria-hidden="true">

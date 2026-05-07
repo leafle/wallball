@@ -133,17 +133,28 @@ export interface WallballPlaySceneOptions {
 
 type PlaySceneFeedbackIntensity = "full" | "reduced";
 
+export const WALLBALL_PLAYFIELD_PALETTE = {
+  batterLaneCementGrey: 0x8f938a,
+  fieldBrightGreen: 0x38b94a,
+  pitcherMoundDustyBrown: 0x9a755b,
+  wallChestnut: 0x7b3f2a
+} as const;
+
 const COLORS = {
   ball: 0xfffaf0,
   batter: 0xfffaf0,
-  field: 0x1f2d28,
+  batterBox: 0x74786f,
+  batterLane: WALLBALL_PLAYFIELD_PALETTE.batterLaneCementGrey,
+  field: WALLBALL_PLAYFIELD_PALETTE.fieldBrightGreen,
   fieldLine: 0xe1d6b8,
   fielder: 0x4cb7a5,
   hud: 0x10100f,
   hudAccent: 0xf5c84b,
+  mound: WALLBALL_PLAYFIELD_PALETTE.pitcherMoundDustyBrown,
   pitcher: 0x4cb7a5,
   sky: 0x101820,
-  wall: 0x34382f,
+  wall: WALLBALL_PLAYFIELD_PALETTE.wallChestnut,
+  wallStroke: 0xae744b,
   wallTarget: 0xf5c84b
 } as const;
 
@@ -280,8 +291,8 @@ function drawWallAndTarget(
 ): void {
   this.add.rectangle(640, 146, 910, 180, COLORS.wall).setStrokeStyle?.(
     3,
-    COLORS.fieldLine,
-    0.42
+    COLORS.wallStroke,
+    0.72
   );
   this.add
     .rectangle(
@@ -306,22 +317,22 @@ function drawWallAndTarget(
 }
 
 function drawCourt(this: PlaySceneContext): void {
-  this.add.rectangle(640, 482, 440, 330, 0x2f3b32, 0.64).setStrokeStyle?.(
+  this.add.rectangle(640, 482, 440, 330, COLORS.batterLane, 0.72).setStrokeStyle?.(
     3,
-    COLORS.fielder,
-    0.28
+    COLORS.fieldLine,
+    0.26
   );
   this.add.rectangle(640, 632, 760, 4, COLORS.fieldLine, 0.38);
   this.add.rectangle(640, 504, 4, 258, COLORS.fieldLine, 0.16);
-  this.add.rectangle(710, 464, 118, 90, 0x121512, 0.28).setStrokeStyle?.(
+  this.add.rectangle(710, 464, 118, 90, COLORS.batterBox, 0.46).setStrokeStyle?.(
     2,
     COLORS.fieldLine,
     0.28
   );
-  this.add.rectangle(640, 598, 132, 38, 0x10100f, 0.34).setStrokeStyle?.(
+  this.add.rectangle(640, 598, 132, 38, COLORS.mound, 0.86).setStrokeStyle?.(
     2,
     COLORS.fieldLine,
-    0.22
+    0.28
   );
 }
 

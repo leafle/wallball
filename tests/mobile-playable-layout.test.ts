@@ -5,6 +5,26 @@ import { describe, expect, it } from "vitest";
 const styleCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
 
 describe("mobile playable layout CSS contract", () => {
+  it("centralizes and applies the documented prototype playfield palette", () => {
+    expect(styleCss).toContain("--playfield-wall-chestnut: #7b3f2a;");
+    expect(styleCss).toContain("--playfield-mound-dusty-brown: #9a755b;");
+    expect(styleCss).toContain("--playfield-field-bright-green: #38b94a;");
+    expect(styleCss).toContain("--playfield-batter-lane-cement-grey: #8f938a;");
+
+    expect(extractCssBlock(styleCss, ".batting-lab")).toContain(
+      "var(--playfield-field-bright-green)"
+    );
+    expect(extractCssBlock(styleCss, ".wall-zone")).toContain(
+      "var(--playfield-wall-chestnut)"
+    );
+    expect(styleCss).toMatch(
+      /\.active-play-corridor\s*\{[^}]*var\(--playfield-batter-lane-cement-grey\)/s
+    );
+    expect(extractCssBlock(styleCss, ".pitcher-mound")).toContain(
+      "var(--playfield-mound-dusty-brown)"
+    );
+  });
+
   it("keeps the Phaser canvas full-width and undistorted in phone landscape", () => {
     expect(styleCss).toContain("align-items: start;");
 
