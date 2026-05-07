@@ -43,11 +43,11 @@ export function projectControlHelpPanel({
         rows: [
           {
             label: "Setup",
-            detail: "Tap Away/Home in the game HUD to cycle teams."
+            detail: "Use Away/Home in the HUD or team selects."
           },
           {
             label: "Start / Restart",
-            detail: "Tap Start / Restart in the game HUD."
+            detail: "Use HUD Start / Restart, Restart button, or R."
           },
           {
             label: "Results",

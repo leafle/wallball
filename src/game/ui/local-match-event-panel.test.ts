@@ -65,37 +65,43 @@ describe("local match event panel projection", () => {
           id: "7",
           label: "Final: Champions 1, Woodland 0",
           meta: "Top 1",
-          tone: "complete"
+          tone: "complete",
+          toneLabel: "Final"
         },
         {
           id: "6",
           label: "Cainer scored",
           meta: "Top 1",
-          tone: "positive"
+          tone: "positive",
+          toneLabel: "Positive"
         },
         {
           id: "5",
           label: "Al recovered the ball",
           meta: "Top 1",
-          tone: "positive"
+          tone: "positive",
+          toneLabel: "Positive"
         },
         {
           id: "4",
           label: "Target hit",
           meta: "Top 1",
-          tone: "positive"
+          tone: "positive",
+          toneLabel: "Positive"
         },
         {
           id: "3",
           label: "Perfect contact: home run",
           meta: "Top 1",
-          tone: "positive"
+          tone: "positive",
+          toneLabel: "Positive"
         },
         {
           id: "2",
           label: "Cainer swung",
           meta: "Top 1",
-          tone: "neutral"
+          tone: "neutral",
+          toneLabel: "Live"
         }
       ],
       statusLabel: "7 events",

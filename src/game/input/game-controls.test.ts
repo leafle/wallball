@@ -5,7 +5,8 @@ import {
   fieldingInputFromKeys,
   getGameplayControlHelpItems,
   isFieldingKey,
-  keyboardActionForKey
+  keyboardActionForKey,
+  shouldIgnoreGameplayKeyboardTarget
 } from "./game-controls";
 
 describe("desktop gameplay controls", () => {
@@ -69,6 +70,15 @@ describe("desktop gameplay controls", () => {
       }
     ]);
   });
+
+  it("does not intercept focused form controls or buttons", () => {
+    expect(shouldIgnoreGameplayKeyboardTarget(target("BUTTON"))).toBe(true);
+    expect(shouldIgnoreGameplayKeyboardTarget(target("INPUT"))).toBe(true);
+    expect(shouldIgnoreGameplayKeyboardTarget(target("SELECT"))).toBe(true);
+    expect(shouldIgnoreGameplayKeyboardTarget(target("TEXTAREA"))).toBe(true);
+    expect(shouldIgnoreGameplayKeyboardTarget(target("DIV", true))).toBe(true);
+    expect(shouldIgnoreGameplayKeyboardTarget(target("DIV"))).toBe(false);
+  });
 });
 
 describe("touch gameplay controls", () => {
@@ -94,3 +104,22 @@ describe("touch gameplay controls", () => {
     });
   });
 });
+
+function target(tagName: string, isContentEditable = false): EventTarget {
+  const fakeTarget: EventTarget & {
+    isContentEditable: boolean;
+    tagName: string;
+  } = {
+    addEventListener: () => {
+      // no-op fake
+    },
+    dispatchEvent: () => true,
+    isContentEditable,
+    removeEventListener: () => {
+      // no-op fake
+    },
+    tagName
+  };
+
+  return fakeTarget;
+}

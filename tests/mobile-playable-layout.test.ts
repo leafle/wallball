@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const styleCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const mainTs = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
 
 describe("mobile playable layout CSS contract", () => {
   it("centralizes and applies the documented prototype playfield palette", () => {
@@ -25,6 +26,27 @@ describe("mobile playable layout CSS contract", () => {
     );
   });
 
+  it("keeps keyboard-reachable local controls below the canvas instead of overlaying play", () => {
+    expect(mainTs).toContain("class=\"playfield-column\"");
+    expect(mainTs).toContain("class=\"local-play-actions\"");
+    expect(mainTs).toContain("aria-label=\"Local gameplay actions\"");
+    expect(mainTs).toContain("data-control-action=\"pause-toggle\"");
+    expect(styleCss).toContain(".playfield-column");
+    expect(styleCss).toContain(".local-play-actions");
+    expect(styleCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
+
+    const landscapeRules = extractCssBlock(
+      styleCss,
+      "@media (orientation: landscape) and (max-height: 480px)"
+    );
+
+    expect(landscapeRules).toContain(".local-play-actions");
+    expect(landscapeRules).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
+    expect(landscapeRules).toContain(
+      "width: min(100%, calc((100svh - 112px) * 16 / 9));"
+    );
+  });
+
   it("keeps the Phaser canvas full-width and undistorted in phone landscape", () => {
     expect(styleCss).toContain("align-items: start;");
 
@@ -36,7 +58,7 @@ describe("mobile playable layout CSS contract", () => {
     expect(landscapeRules).toContain(".play-surface-grid");
     expect(landscapeRules).toContain("grid-template-columns: 1fr;");
     expect(landscapeRules).toContain(
-      "width: min(100%, calc((100svh - 64px) * 16 / 9));"
+      "width: min(100%, calc((100svh - 112px) * 16 / 9));"
     );
   });
 
@@ -52,6 +74,23 @@ describe("mobile playable layout CSS contract", () => {
     );
     expect(landscapeRules).toContain("max-height: 42svh;");
     expect(landscapeRules).toContain("overflow: auto;");
+  });
+
+  it("projects reduced motion and higher contrast preference contracts", () => {
+    const reducedMotionRules = extractCssBlock(
+      styleCss,
+      "@media (prefers-reduced-motion: reduce)"
+    );
+    const contrastRules = extractCssBlock(
+      styleCss,
+      "@media (prefers-contrast: more)"
+    );
+
+    expect(reducedMotionRules).toContain(".prototype-ball");
+    expect(reducedMotionRules).toContain("transition: none;");
+    expect(reducedMotionRules).toContain("will-change: auto;");
+    expect(contrastRules).toContain(".game-host");
+    expect(contrastRules).toContain("border-color: #fffaf0;");
   });
 });
 

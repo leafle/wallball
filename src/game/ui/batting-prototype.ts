@@ -198,8 +198,18 @@ export function renderBattingPrototypeMarkup(): string {
         <div class="timing-cursor" data-role="timing-cursor"></div>
       </div>
       <div class="prototype-ball" data-role="ball"></div>
-      <button type="button" class="control-zone control-zone-pitch" data-control-action="pitch">Pitch</button>
-      <button type="button" class="control-zone control-zone-swing" data-control-action="swing">Swing</button>
+      <button
+        type="button"
+        class="control-zone control-zone-pitch"
+        data-control-action="pitch"
+        aria-keyshortcuts="Enter P"
+      >Pitch</button>
+      <button
+        type="button"
+        class="control-zone control-zone-swing"
+        data-control-action="swing"
+        aria-keyshortcuts="Space"
+      >Swing</button>
     </div>
   `;
 }

@@ -30,6 +30,7 @@ export interface LocalMatchEventRow {
   label: string;
   meta: string;
   tone: LocalMatchEventRowTone;
+  toneLabel: string;
 }
 
 export interface LocalMatchEventPanelProjection {
@@ -72,7 +73,8 @@ function projectEventRow(
     id: String(event.sequence),
     label: eventLabel(event, players, projection),
     meta: `${capitalize(event.half)} ${String(event.inning)}`,
-    tone: eventTone(event)
+    tone: eventTone(event),
+    toneLabel: eventToneLabel(event)
   };
 }
 
@@ -150,6 +152,24 @@ function eventTone(event: LocalMatchEvent): LocalMatchEventRowTone {
   }
 
   return "neutral";
+}
+
+function eventToneLabel(event: LocalMatchEvent): string {
+  const tone = eventTone(event);
+
+  if (tone === "complete") {
+    return "Final";
+  }
+
+  if (tone === "warning") {
+    return "Warning";
+  }
+
+  if (tone === "positive") {
+    return "Positive";
+  }
+
+  return "Live";
 }
 
 function isPositiveEvent(event: LocalMatchEvent): boolean {

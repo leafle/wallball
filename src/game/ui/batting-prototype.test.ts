@@ -15,5 +15,7 @@ describe("batting prototype markup", () => {
     expect(markup).toContain("class=\"control-zone control-zone-swing\"");
     expect(markup).toContain("data-control-action=\"pitch\"");
     expect(markup).toContain("data-control-action=\"swing\"");
+    expect(markup).toContain("aria-keyshortcuts=\"Enter P\"");
+    expect(markup).toContain("aria-keyshortcuts=\"Space\"");
   });
 });

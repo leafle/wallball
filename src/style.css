@@ -89,6 +89,23 @@ select {
   align-items: start;
 }
 
+.playfield-column {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.local-play-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.local-play-actions button {
+  min-height: 46px;
+  padding: 0 10px;
+}
+
 .local-side-panel {
   display: grid;
   align-content: start;
@@ -338,10 +355,39 @@ label {
 }
 
 .local-event-list span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
   color: #a9aa9f;
   font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.local-event-tone {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  border: 1px solid #6f7568;
+  border-radius: 999px;
+  padding: 0 6px;
+  color: #10100f;
+  background: #d8d1c0;
+  font-size: 0.64rem;
+  font-weight: 900;
+}
+
+.local-event-list li.is-positive .local-event-tone {
+  background: #4cb7a5;
+}
+
+.local-event-list li.is-warning .local-event-tone {
+  background: #f28f5b;
+}
+
+.local-event-list li.is-complete .local-event-tone {
+  background: #f5c84b;
 }
 
 .local-event-list strong {
@@ -1273,6 +1319,10 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .local-play-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .preference-toggle-grid {
     grid-template-columns: 1fr;
   }
@@ -1331,8 +1381,22 @@ label {
   }
 
   .phaser-host {
-    width: min(100%, calc((100svh - 64px) * 16 / 9));
+    width: min(100%, calc((100svh - 112px) * 16 / 9));
     justify-self: center;
+  }
+
+  .playfield-column {
+    justify-items: center;
+  }
+
+  .local-play-actions {
+    width: min(100%, calc((100svh - 112px) * 16 / 9));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .local-play-actions button {
+    min-height: 38px;
+    font-size: 0.82rem;
   }
 
   .local-side-panel {
@@ -1388,5 +1452,43 @@ label {
   .prototype-host {
     width: min(100%, calc((100svh - 64px) * 16 / 9));
     justify-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+  }
+
+  .prototype-ball,
+  .timing-cursor {
+    transition: none;
+    box-shadow: none;
+    will-change: auto;
+  }
+
+  .active-play-corridor {
+    transform: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .game-host,
+  .control-help-panel,
+  .post-match-panel,
+  .local-event-panel,
+  .local-series-panel,
+  .match-history-panel,
+  .control-group,
+  .activity-panel {
+    border-color: #fffaf0;
+  }
+
+  .local-event-list li,
+  .post-match-list li,
+  .match-history-list li {
+    border-left-width: 5px;
   }
 }

@@ -187,7 +187,7 @@ export function mountKeyboardGameplayControls(
   };
 
   const handleKeyDown = (event: KeyboardEvent): void => {
-    if (isEditableTarget(event.target)) {
+    if (shouldIgnoreGameplayKeyboardTarget(event.target)) {
       return;
     }
 
@@ -217,7 +217,10 @@ export function mountKeyboardGameplayControls(
   };
 
   const handleKeyUp = (event: KeyboardEvent): void => {
-    if (isEditableTarget(event.target) || !isFieldingKey(event.code)) {
+    if (
+      shouldIgnoreGameplayKeyboardTarget(event.target) ||
+      !isFieldingKey(event.code)
+    ) {
       return;
     }
 
@@ -299,6 +302,32 @@ export function mountTouchGameplayControls(
     }
   };
 
+  const handleClick = (event: MouseEvent): void => {
+    if (event.detail !== 0 || !(event.target instanceof Element)) {
+      return;
+    }
+
+    const actionControl = event.target.closest<HTMLElement>(
+      "[data-control-action]"
+    );
+
+    if (!actionControl || !root.contains(actionControl)) {
+      return;
+    }
+
+    const action = parseGameplayAction(actionControl.dataset.controlAction);
+
+    if (!action) {
+      return;
+    }
+
+    event.preventDefault();
+    dispatch({
+      kind: action,
+      source: "keyboard"
+    });
+  };
+
   const handlePointerEnd = (event: PointerEvent): void => {
     if (activeFieldingPointers.delete(event.pointerId)) {
       emitFieldingMove();
@@ -306,12 +335,14 @@ export function mountTouchGameplayControls(
   };
 
   root.addEventListener("pointerdown", handlePointerDown);
+  root.addEventListener("click", handleClick);
   root.addEventListener("pointerup", handlePointerEnd);
   root.addEventListener("pointercancel", handlePointerEnd);
   root.addEventListener("lostpointercapture", handlePointerEnd);
 
   return () => {
     root.removeEventListener("pointerdown", handlePointerDown);
+    root.removeEventListener("click", handleClick);
     root.removeEventListener("pointerup", handlePointerEnd);
     root.removeEventListener("pointercancel", handlePointerEnd);
     root.removeEventListener("lostpointercapture", handlePointerEnd);
@@ -362,16 +393,35 @@ function formatKeyCode(code: string): string {
   return code;
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
+export function shouldIgnoreGameplayKeyboardTarget(
+  target: EventTarget | null
+): boolean {
+  if (!isKeyboardTargetElement(target)) {
     return false;
   }
 
+  const tagName = target.tagName.toUpperCase();
+
+  return target.isContentEditable || INTERACTIVE_KEYBOARD_TAGS.has(tagName);
+}
+
+const INTERACTIVE_KEYBOARD_TAGS: ReadonlySet<string> = new Set([
+  "BUTTON",
+  "INPUT",
+  "SELECT",
+  "TEXTAREA"
+]);
+
+function isKeyboardTargetElement(
+  target: EventTarget | null
+): target is EventTarget & { isContentEditable: boolean; tagName: string } {
   return (
-    target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLSelectElement ||
-    target instanceof HTMLTextAreaElement
+    typeof target === "object" &&
+    target !== null &&
+    "tagName" in target &&
+    typeof target.tagName === "string" &&
+    "isContentEditable" in target &&
+    typeof target.isContentEditable === "boolean"
   );
 }
 

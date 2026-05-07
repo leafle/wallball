@@ -87,6 +87,7 @@ const appElement = app;
 const battingPrototypeParent = "batting-prototype";
 const controlHelpParent = "control-help";
 const gameplayPreferencesParent = "gameplay-preferences";
+const localPlayActionsParent = "local-play-actions";
 const localSeriesParent = "local-series";
 const localMatchEventsParent = "local-match-events";
 const postMatchResultsParent = "post-match-results";
@@ -218,13 +219,41 @@ appElement.innerHTML = `
       ></aside>
       <div class="game-stage-grid">
         <div class="play-surface-grid">
-          <div
-            id="${config.parent}"
-            class="game-host phaser-host"
-            data-role="phaser-shell"
-            data-width="${String(config.width)}"
-            data-height="${String(config.height)}"
-          ></div>
+          <div class="playfield-column">
+            <div
+              id="${config.parent}"
+              class="game-host phaser-host"
+              data-role="phaser-shell"
+              data-width="${String(config.width)}"
+              data-height="${String(config.height)}"
+            ></div>
+            <div
+              id="${localPlayActionsParent}"
+              class="local-play-actions"
+              aria-label="Local gameplay actions"
+            >
+              <button
+                type="button"
+                data-control-action="pitch"
+                aria-keyshortcuts="Enter P"
+              >Pitch</button>
+              <button
+                type="button"
+                data-control-action="swing"
+                aria-keyshortcuts="Space"
+              >Swing</button>
+              <button
+                type="button"
+                data-control-action="pause-toggle"
+                aria-keyshortcuts="Escape"
+              >Pause</button>
+              <button
+                type="button"
+                data-control-action="restart"
+                aria-keyshortcuts="R"
+              >Restart</button>
+            </div>
+          </div>
           <div class="local-side-panel">
             <aside
               id="${localSeriesParent}"
@@ -356,6 +385,9 @@ const remoteConsoleElement = getElement<HTMLElement>("#remote-console");
 const roomStateElement = getElement<HTMLDivElement>("#room-state");
 const intentLogElement = getElement<HTMLOListElement>("#intent-log");
 const matchLogElement = getElement<HTMLOListElement>("#match-log");
+const localPlayActionsElement = getElement<HTMLElement>(
+  `#${localPlayActionsParent}`
+);
 const controlHelpElement = getElement<HTMLElement>(`#${controlHelpParent}`);
 const gameplayPreferencesElement = getElement<HTMLElement>(
   `#${gameplayPreferencesParent}`
@@ -386,6 +418,7 @@ void mountPhaserGameShell({
   .catch(reportError);
 mountBattingPrototype(getElement<HTMLDivElement>(`#${battingPrototypeParent}`));
 void mountKeyboardGameplayControls(window, handleGameplayControlIntent);
+void mountTouchGameplayControls(localPlayActionsElement, handleGameplayControlIntent);
 void mountTouchGameplayControls(remoteConsoleElement, handleGameplayControlIntent);
 
 syncRemoteMatchupControls();
@@ -1024,7 +1057,10 @@ function renderLocalEventRows(panel: LocalMatchEventPanelProjection): string {
     .map(
       (row) => `
         <li class="is-${row.tone}">
-          <span>${escapeHtml(row.meta)}</span>
+          <span>
+            <small class="local-event-tone">${escapeHtml(row.toneLabel)}</small>
+            ${escapeHtml(row.meta)}
+          </span>
           <strong>${escapeHtml(row.label)}</strong>
         </li>
       `
