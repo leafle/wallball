@@ -64,14 +64,14 @@ describe("local match event panel projection", () => {
         {
           id: "7",
           label: "Final: Champions 1, Woodland 0",
-          meta: "Top 1",
+          meta: "Top 1 - score 1-0",
           tone: "complete",
           toneLabel: "Final"
         },
         {
           id: "6",
           label: "Cainer scored",
-          meta: "Top 1",
+          meta: "Top 1 - score 1-0",
           tone: "positive",
           toneLabel: "Positive"
         },
@@ -129,6 +129,78 @@ describe("local match event panel projection", () => {
       summaryRows: [],
       title: "Event Log"
     });
+  });
+
+  it("projects pitch wall-zone and score context from event rows", () => {
+    expect(
+      projectLocalMatchEventPanel({
+        events: [
+          {
+            ...event(1, "take", "cainer"),
+            result: "miss"
+          },
+          {
+            ...event(2, "target-hit", "cainer"),
+            result: "miss",
+            targetHit: true
+          },
+          {
+            ...event(3, "wall-hit", "cainer"),
+            result: "miss",
+            targetHit: false
+          },
+          {
+            ...event(4, "run", "cainer"),
+            runsScored: ["cainer"],
+            score: {
+              away: 1,
+              home: 0
+            }
+          }
+        ],
+        players: [
+          {
+            id: "cainer",
+            displayName: "Cainer"
+          }
+        ],
+        projection: {
+          awayTeamName: "Champions",
+          homeTeamName: "Woodland",
+          phaseKind: "ready-for-at-bat"
+        },
+        summary: null
+      }).recentRows
+    ).toEqual([
+      {
+        id: "4",
+        label: "Cainer scored",
+        meta: "Top 1 - score 1-0",
+        tone: "positive",
+        toneLabel: "Positive"
+      },
+      {
+        id: "3",
+        label: "Pitch outside zone",
+        meta: "Top 1",
+        tone: "neutral",
+        toneLabel: "Live"
+      },
+      {
+        id: "2",
+        label: "Pitch inside zone",
+        meta: "Top 1",
+        tone: "warning",
+        toneLabel: "Warning"
+      },
+      {
+        id: "1",
+        label: "Cainer took the pitch",
+        meta: "Top 1",
+        tone: "neutral",
+        toneLabel: "Live"
+      }
+    ]);
   });
 });
 

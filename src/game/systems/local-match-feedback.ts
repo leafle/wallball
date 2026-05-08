@@ -1,13 +1,16 @@
 import type { LocalMatchLoopState, LocalMatchPlay } from "./local-match-loop";
+import type { PlateAppearanceResult } from "./match-flow";
 
 export type LocalMatchFeedbackKind =
   | "ready"
   | "pitch"
+  | "take"
   | "swing-contact"
   | "swing-miss"
   | "wall-hit"
   | "target-hit"
   | "recovery"
+  | "hit"
   | "out"
   | "run"
   | "match-complete";
@@ -44,7 +47,7 @@ export function projectLocalMatchFeedback(
   if (state.phase.kind === "match-completed") {
     return {
       primary: cue("match-complete", "Match complete", "complete", "results"),
-      result: state.lastPlay ? resultCue(state.lastPlay) : null,
+      result: state.lastPlay ? resultCue(state.lastPlay, state) : null,
       secondary: state.lastPlay ? recoveryCue(state.lastPlay, false) : null,
       wall: state.lastPlay ? wallCue(state.lastPlay) : null
     };
@@ -69,7 +72,7 @@ export function projectLocalMatchFeedback(
   }
 
   if (state.lastPlay?.plateAppearance) {
-    const result = resultCue(state.lastPlay);
+    const result = resultCue(state.lastPlay, state);
 
     return {
       primary:
@@ -92,6 +95,10 @@ export function projectLocalMatchFeedback(
 
 function contactCue(play: LocalMatchPlay): LocalMatchFeedbackCue {
   if (play.ballResult.kind === "miss") {
+    if (play.pitchOutcome?.source === "taken" || play.swingTimingMs === null) {
+      return cue("take", "Pitch taken", "neutral", "batter");
+    }
+
     return cue("swing-miss", "Swing missed", "warning", "batter");
   }
 
@@ -104,6 +111,10 @@ function contactCue(play: LocalMatchPlay): LocalMatchFeedbackCue {
 }
 
 function wallCue(play: LocalMatchPlay): LocalMatchFeedbackCue | null {
+  if (play.pitchOutcome) {
+    return pitchWallCue(play);
+  }
+
   if (play.ballResult.kind === "miss") {
     return null;
   }
@@ -140,30 +151,97 @@ function recoveryCue(
   return cue("recovery", "Ball recovered", "positive", "field");
 }
 
-function resultCue(play: LocalMatchPlay): LocalMatchFeedbackCue | null {
+function resultCue(
+  play: LocalMatchPlay,
+  state: LocalMatchLoopState
+): LocalMatchFeedbackCue | null {
   const plateAppearance = play.plateAppearance;
 
   if (!plateAppearance) {
     return null;
   }
 
-  if (plateAppearance.runsScored.length > 0) {
+  if (isHitResult(plateAppearance.result)) {
+    const resultLabel = formatPlateAppearanceResult(plateAppearance.result);
     const runsScored = plateAppearance.runsScored.length;
 
+    if (runsScored > 0) {
+      return cue(
+        "run",
+        `${resultLabel} - ${formatRunsScored(runsScored)}, score ${formatScore(
+          state
+        )}`,
+        "positive",
+        "field"
+      );
+    }
+
+    return cue("hit", resultLabel, "positive", "field");
+  }
+
+  return cue("out", outText(plateAppearance, state), "warning", "field");
+}
+
+function pitchWallCue(play: LocalMatchPlay): LocalMatchFeedbackCue | null {
+  if (!play.pitchOutcome) {
+    return null;
+  }
+
+  if (play.pitchOutcome.zone === "inside-strike-zone") {
     return cue(
-      "run",
-      `${runsScored} ${runsScored === 1 ? "run" : "runs"} scored`,
-      "positive",
-      "field"
+      "target-hit",
+      "Pitch inside zone",
+      "warning",
+      "wall"
     );
   }
 
-  return cue(
-    "out",
-    plateAppearance.halfInningEnded ? "Side retired" : "Out recorded",
-    "warning",
-    "field"
+  return cue("wall-hit", "Pitch outside zone", "neutral", "wall");
+}
+
+function outText(
+  plateAppearance: NonNullable<LocalMatchPlay["plateAppearance"]>,
+  state: LocalMatchLoopState
+): string {
+  if (plateAppearance.halfInningEnded) {
+    return `Side retired - ${capitalize(state.flow.match.inning.half)} ${String(
+      state.flow.match.inning.inning
+    )} begins`;
+  }
+
+  return "Out recorded";
+}
+
+function isHitResult(
+  result: PlateAppearanceResult
+): result is Extract<
+  PlateAppearanceResult,
+  "single" | "double" | "triple" | "home-run"
+> {
+  return (
+    result === "single" ||
+    result === "double" ||
+    result === "triple" ||
+    result === "home-run"
   );
+}
+
+function formatPlateAppearanceResult(result: PlateAppearanceResult): string {
+  if (result === "home-run") {
+    return "Home run";
+  }
+
+  return capitalize(result.replaceAll("-", " "));
+}
+
+function formatRunsScored(runsScored: number): string {
+  return `${String(runsScored)} ${runsScored === 1 ? "run" : "runs"} scored`;
+}
+
+function formatScore(state: LocalMatchLoopState): string {
+  const { away, home } = state.flow.match.score;
+
+  return `${String(away)}-${String(home)}`;
 }
 
 function cue(
@@ -178,4 +256,8 @@ function cue(
     text,
     tone
   };
+}
+
+function capitalize(value: string): string {
+  return value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }

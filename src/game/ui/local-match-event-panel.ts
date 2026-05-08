@@ -72,7 +72,7 @@ function projectEventRow(
   return {
     id: String(event.sequence),
     label: eventLabel(event, players, projection),
-    meta: `${capitalize(event.half)} ${String(event.inning)}`,
+    meta: eventMeta(event),
     tone: eventTone(event),
     toneLabel: eventToneLabel(event)
   };
@@ -101,6 +101,12 @@ function eventLabel(
     return "Ball loose";
   }
 
+  if (event.kind === "take") {
+    return event.playerId
+      ? `${playerDisplayName(players, event.playerId)} took the pitch`
+      : "Pitch taken";
+  }
+
   if (event.kind === "run") {
     return event.playerId
       ? `${playerDisplayName(players, event.playerId)} scored`
@@ -120,10 +126,18 @@ function eventLabel(
   }
 
   if (event.kind === "target-hit") {
+    if (event.result === "miss") {
+      return "Pitch inside zone";
+    }
+
     return "Target hit";
   }
 
   if (event.kind === "wall-hit") {
+    if (event.result === "miss") {
+      return "Pitch outside zone";
+    }
+
     return "Wall hit";
   }
 
@@ -143,7 +157,7 @@ function eventTone(event: LocalMatchEvent): LocalMatchEventRowTone {
     return "complete";
   }
 
-  if (event.kind === "out") {
+  if (event.kind === "out" || isMissedPitchInsideZone(event)) {
     return "warning";
   }
 
@@ -175,12 +189,28 @@ function eventToneLabel(event: LocalMatchEvent): string {
 function isPositiveEvent(event: LocalMatchEvent): boolean {
   return (
     event.kind === "run" ||
-    event.kind === "target-hit" ||
+    (event.kind === "target-hit" && event.result !== "miss") ||
     (event.kind === "recovery" && event.recoveryKind === "recovered") ||
     (event.kind === "contact" &&
       event.result !== "out" &&
       event.result !== "miss")
   );
+}
+
+function isMissedPitchInsideZone(event: LocalMatchEvent): boolean {
+  return event.kind === "target-hit" && event.result === "miss";
+}
+
+function eventMeta(event: LocalMatchEvent): string {
+  const inning = `${capitalize(event.half)} ${String(event.inning)}`;
+
+  if (!event.score) {
+    return inning;
+  }
+
+  return `${inning} - score ${String(event.score.away)}-${String(
+    event.score.home
+  )}`;
 }
 
 function statusLabel(eventCount: number, completed: boolean): string {

@@ -318,7 +318,7 @@ describe("createWallballPlayScene", () => {
 
     updateWallballPlayScene.call(scene, 1_500, 0);
 
-    expect(textCall(calls, "1 run scored")).toEqual(
+    expect(textCall(calls, "Home run - 1 run scored, score 1-0")).toEqual(
       expect.objectContaining({
         x: 52,
         y: 622
@@ -330,7 +330,9 @@ describe("createWallballPlayScene", () => {
         y: 650
       })
     );
-    expect(textCall(calls, "1 run scored").y).toBeGreaterThan(
+    expect(
+      textCall(calls, "Home run - 1 run scored, score 1-0").y
+    ).toBeGreaterThan(
       Math.max(
         yForText(calls, "Champions 1"),
         yForText(calls, "Woodland 0"),

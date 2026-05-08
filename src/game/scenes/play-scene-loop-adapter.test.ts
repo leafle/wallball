@@ -603,7 +603,7 @@ describe("play scene local loop adapter", () => {
       },
       result: {
         kind: "run",
-        text: "1 run scored"
+        text: "Home run - 1 run scored, score 1-0"
       }
     });
   });
