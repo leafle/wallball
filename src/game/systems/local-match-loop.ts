@@ -23,9 +23,15 @@ import type {
   BallRecovery,
   FieldBounds,
   FieldingInput,
-  Fielder
+  Fielder,
+  WallballFieldLayout,
+  WallballHitResultInput
 } from "./fielding";
-import { moveFielder, resolveBallRecovery } from "./fielding";
+import {
+  moveFielder,
+  resolveBallRecovery,
+  resolveWallballHitResult
+} from "./fielding";
 import type {
   MatchFlowState,
   PlateAppearanceResult,
@@ -125,6 +131,7 @@ export interface LocalMatchLoopSettings {
   wallRestitution: number;
   recoveryRadius: number;
   maxRecoverySpeed: number;
+  fieldLayout: WallballFieldLayout;
   swingTuning: GameplaySwingTuning;
 }
 
@@ -152,6 +159,7 @@ export interface CreateLocalMatchLoopStateInput {
   wallRestitution?: number;
   recoveryRadius?: number;
   maxRecoverySpeed?: number;
+  fieldLayout?: WallballFieldLayout;
   swingTuning?: GameplaySwingTuning;
 }
 
@@ -170,6 +178,7 @@ export interface TakePitchLocalMatchAction {
 
 export interface RecoverBallLocalMatchAction {
   type: "recover-ball";
+  hitResult?: Omit<WallballHitResultInput, "fieldLayout">;
 }
 
 export interface MoveFielderLocalMatchAction {
@@ -209,6 +218,11 @@ const DEFAULT_WALL_TARGET: WallTarget = {
   width: 80,
   height: 80
 };
+const DEFAULT_FIELD_LAYOUT: WallballFieldLayout = {
+  infieldLineY: 360,
+  outfieldLineY: 520,
+  fenceY: 680
+};
 
 export function createLocalMatchLoopState({
   awayRoster,
@@ -223,6 +237,7 @@ export function createLocalMatchLoopState({
   wallRestitution = DEFAULT_GAMEPLAY_TUNING.pitch.wallRestitution,
   recoveryRadius = DEFAULT_GAMEPLAY_TUNING.recovery.localRadius,
   maxRecoverySpeed = DEFAULT_GAMEPLAY_TUNING.recovery.localMaxBallSpeed,
+  fieldLayout = DEFAULT_FIELD_LAYOUT,
   swingTuning = DEFAULT_GAMEPLAY_TUNING.swing
 }: CreateLocalMatchLoopStateInput): LocalMatchLoopState {
   const battingOrder = createBattingOrderFromRosters({
@@ -259,6 +274,7 @@ export function createLocalMatchLoopState({
       wallRestitution,
       recoveryRadius,
       maxRecoverySpeed,
+      fieldLayout: cloneFieldLayout(fieldLayout),
       swingTuning: cloneSwingTuning(swingTuning)
     }
   };
@@ -288,7 +304,7 @@ export function advanceLocalMatchLoop(
     return moveLocalFielder(state, action);
   }
 
-  return recoverBall(state);
+  return recoverBall(state, action);
 }
 
 function pitchLocalMatch(
@@ -456,7 +472,10 @@ function takePitchAtWall(state: LocalMatchLoopState): LocalMatchLoopState {
   return finishPlateAppearance(nextState, "miss", null);
 }
 
-function recoverBall(state: LocalMatchLoopState): LocalMatchLoopState {
+function recoverBall(
+  state: LocalMatchLoopState,
+  action: RecoverBallLocalMatchAction
+): LocalMatchLoopState {
   if (state.phase.kind !== "awaiting-recovery" || !state.lastPlay) {
     throw new Error("Cannot recover the ball unless a batted ball is in play");
   }
@@ -481,7 +500,11 @@ function recoverBall(state: LocalMatchLoopState): LocalMatchLoopState {
     };
   }
 
-  return finishPlateAppearance(state, state.lastPlay.ballResult.kind, recovery);
+  return finishPlateAppearance(
+    state,
+    resolveRecoveredHitResult(state, action),
+    recovery
+  );
 }
 
 function moveLocalFielder(
@@ -520,7 +543,7 @@ function moveLocalFielder(
 
 function finishPlateAppearance(
   state: LocalMatchLoopState,
-  result: BallResultKind,
+  result: PlateAppearanceResult,
   recovery: BallRecovery | null
 ): LocalMatchLoopState {
   if (!state.lastPlay) {
@@ -785,6 +808,14 @@ function cloneWallTarget(target: WallTarget): WallTarget {
   };
 }
 
+function cloneFieldLayout(layout: WallballFieldLayout): WallballFieldLayout {
+  return {
+    infieldLineY: layout.infieldLineY,
+    outfieldLineY: layout.outfieldLineY,
+    fenceY: layout.fenceY
+  };
+}
+
 function cloneSwingTuning(tuning: GameplaySwingTuning): GameplaySwingTuning {
   return { ...tuning };
 }
@@ -809,6 +840,46 @@ function cloneVector(vector: Vector2): Vector2 {
     x: vector.x,
     y: vector.y
   };
+}
+
+function resolveRecoveredHitResult(
+  state: LocalMatchLoopState,
+  action: RecoverBallLocalMatchAction
+): PlateAppearanceResult {
+  if (action.hitResult) {
+    return resolveWallballHitResult({
+      ...action.hitResult,
+      fieldLayout: state.settings.fieldLayout
+    });
+  }
+
+  return inferHitResultFromCurrentPlay(state);
+}
+
+function inferHitResultFromCurrentPlay(
+  state: LocalMatchLoopState
+): PlateAppearanceResult {
+  if (!state.lastPlay) {
+    throw new Error("Cannot infer hit result without play context");
+  }
+
+  if (state.lastPlay.ballResult.kind === "miss") {
+    return "miss";
+  }
+
+  if (state.lastPlay.ballResult.kind === "out") {
+    return "fly-out";
+  }
+
+  if (state.lastPlay.ballResult.kind === "home-run") {
+    return "home-run";
+  }
+
+  if (state.lastPlay.ballResult.kind === "double") {
+    return "double";
+  }
+
+  return "single";
 }
 
 function resolvePitchWallOutcomeForState(

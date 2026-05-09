@@ -202,6 +202,50 @@ describe("local match event panel projection", () => {
       }
     ]);
   });
+
+  it("labels documented out result events as warnings", () => {
+    expect(
+      projectLocalMatchEventPanel({
+        events: [
+          {
+            ...event(1, "out", "cainer"),
+            result: "fly-out"
+          },
+          {
+            ...event(2, "out", "cainer"),
+            result: "ground-out"
+          }
+        ],
+        players: [
+          {
+            id: "cainer",
+            displayName: "Cainer"
+          }
+        ],
+        projection: {
+          awayTeamName: "Champions",
+          homeTeamName: "Woodland",
+          phaseKind: "ready-for-at-bat"
+        },
+        summary: null
+      }).recentRows
+    ).toEqual([
+      {
+        id: "2",
+        label: "Cainer ground out",
+        meta: "Top 1",
+        tone: "warning",
+        toneLabel: "Warning"
+      },
+      {
+        id: "1",
+        label: "Cainer fly out",
+        meta: "Top 1",
+        tone: "warning",
+        toneLabel: "Warning"
+      }
+    ]);
+  });
 });
 
 const summary: MatchSummary = {

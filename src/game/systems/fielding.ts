@@ -51,6 +51,30 @@ export interface LooseBall {
 
 export type BallRecovery = RecoveredBall | LooseBall;
 
+export type WallballFielderRole = "fielder" | "pitcher";
+export type WallballHitResult =
+  | "fly-out"
+  | "ground-out"
+  | "single"
+  | "double"
+  | "triple"
+  | "home-run";
+
+export interface WallballFieldLayout {
+  infieldLineY: number;
+  outfieldLineY: number;
+  fenceY: number;
+}
+
+export interface WallballHitResultInput {
+  bounced: boolean;
+  fieldedAtY: number;
+  fieldedBy: WallballFielderRole;
+  fieldLayout: WallballFieldLayout;
+  hitFence: boolean;
+  overFence: boolean;
+}
+
 export function moveFielder({
   fielder,
   input,
@@ -107,6 +131,39 @@ export function resolveBallRecovery({
   };
 }
 
+export function resolveWallballHitResult({
+  bounced,
+  fieldedAtY,
+  fieldedBy,
+  fieldLayout,
+  hitFence,
+  overFence
+}: WallballHitResultInput): WallballHitResult {
+  validateFieldLayout(fieldLayout);
+
+  if (overFence) {
+    return "home-run";
+  }
+
+  if (!bounced) {
+    return "fly-out";
+  }
+
+  if (hitFence || fieldedAtY >= fieldLayout.fenceY) {
+    return "triple";
+  }
+
+  if (fieldedBy === "pitcher" && fieldedAtY < fieldLayout.infieldLineY) {
+    return "ground-out";
+  }
+
+  if (fieldedAtY < fieldLayout.outfieldLineY) {
+    return "single";
+  }
+
+  return "double";
+}
+
 function normalizeInput(input: FieldingInput): Vector2 {
   const length = vectorLength({ x: input.axisX, y: input.axisY });
 
@@ -159,6 +216,20 @@ function vectorLength(vector: Vector2): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function validateFieldLayout(layout: WallballFieldLayout): void {
+  if (
+    !Number.isFinite(layout.infieldLineY) ||
+    !Number.isFinite(layout.outfieldLineY) ||
+    !Number.isFinite(layout.fenceY) ||
+    layout.infieldLineY >= layout.outfieldLineY ||
+    layout.outfieldLineY >= layout.fenceY
+  ) {
+    throw new Error(
+      "Expected field lines to be finite and ordered wall-to-fence"
+    );
+  }
 }
 
 function round(value: number): number {

@@ -65,7 +65,7 @@ describe("local match loop", () => {
     });
   });
 
-  it("turns recovered weak contact into an out and advances the batting order", () => {
+  it("turns recovered weak contact into a fly out and advances the batting order", () => {
     const recovered = pitchSwingRecover(createTestLoopState(), 1_300);
 
     expect(recovered.phase).toEqual({
@@ -79,7 +79,7 @@ describe("local match loop", () => {
     });
     expect(recovered.lastPlay?.plateAppearance).toMatchObject({
       batterId: "cainer",
-      result: "out",
+      result: "fly-out",
       runsScored: []
     });
   });
@@ -116,6 +116,30 @@ describe("local match loop", () => {
       "contact",
       "recovery"
     ]);
+  });
+
+  it("uses fielding facts to resolve the recovered wallball hit result", () => {
+    const recovered = recover(
+      swing(pitch(createTestLoopState()), 1_180),
+      {
+        bounced: true,
+        fieldedAtY: 610,
+        fieldedBy: "fielder",
+        hitFence: false,
+        overFence: false
+      }
+    );
+
+    expect(recovered.lastPlay?.plateAppearance).toMatchObject({
+      batterId: "cainer",
+      result: "double",
+      runsScored: []
+    });
+    expect(recovered.flow.bases).toEqual({
+      first: null,
+      second: "cainer",
+      third: null
+    });
   });
 
   it("resolves a swung miss by carrying the pitch to the wall inside the strike-zone square", () => {
@@ -215,7 +239,7 @@ describe("local match loop", () => {
       batterId: "al"
     });
     expect(thirdOut.lastPlay?.plateAppearance).toMatchObject({
-      result: "out",
+      result: "fly-out",
       halfInningEnded: true
     });
   });
@@ -410,9 +434,19 @@ function swing(
   });
 }
 
-function recover(state: LocalMatchLoopState): LocalMatchLoopState {
+function recover(
+  state: LocalMatchLoopState,
+  hitResult?: {
+    bounced: boolean;
+    fieldedAtY: number;
+    fieldedBy: "fielder" | "pitcher";
+    hitFence: boolean;
+    overFence: boolean;
+  }
+): LocalMatchLoopState {
   return advanceLocalMatchLoop(state, {
-    type: "recover-ball"
+    type: "recover-ball",
+    hitResult
   });
 }
 

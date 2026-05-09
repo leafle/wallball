@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   moveFielder,
+  resolveWallballHitResult,
   resolveBallRecovery,
   type Fielder
 } from "./fielding";
@@ -121,5 +122,91 @@ describe("ball recovery", () => {
       nearestFielderId: "minkus",
       distance: 5
     });
+  });
+});
+
+describe("wallball hit results", () => {
+  const fieldLayout = {
+    infieldLineY: 360,
+    outfieldLineY: 520,
+    fenceY: 680
+  };
+
+  it("turns a no-bounce catch into a fly out", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: false,
+        fieldedAtY: 300,
+        fieldedBy: "fielder",
+        fieldLayout,
+        hitFence: false,
+        overFence: false
+      })
+    ).toBe("fly-out");
+  });
+
+  it("turns a bounced pitcher fielding before the infield line into a ground out", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: true,
+        fieldedAtY: 320,
+        fieldedBy: "pitcher",
+        fieldLayout,
+        hitFence: false,
+        overFence: false
+      })
+    ).toBe("ground-out");
+  });
+
+  it("turns bounced balls fielded between the infield and outfield lines into singles", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: true,
+        fieldedAtY: 430,
+        fieldedBy: "fielder",
+        fieldLayout,
+        hitFence: false,
+        overFence: false
+      })
+    ).toBe("single");
+  });
+
+  it("turns bounced balls fielded between the outfield line and fence into doubles", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: true,
+        fieldedAtY: 610,
+        fieldedBy: "fielder",
+        fieldLayout,
+        hitFence: false,
+        overFence: false
+      })
+    ).toBe("double");
+  });
+
+  it("turns bounced fence contact into a triple", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: true,
+        fieldedAtY: 675,
+        fieldedBy: "fielder",
+        fieldLayout,
+        hitFence: true,
+        overFence: false
+      })
+    ).toBe("triple");
+  });
+
+  it("turns over-fence balls into home runs", () => {
+    expect(
+      resolveWallballHitResult({
+        bounced: true,
+        fieldedAtY: 700,
+        fieldedBy: "fielder",
+        fieldLayout,
+        hitFence: false,
+        overFence: true
+      })
+    ).toBe("home-run");
   });
 });

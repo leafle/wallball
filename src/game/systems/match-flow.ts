@@ -10,10 +10,11 @@ import type { BattingOrder } from "../domain/rosters";
 import type { BattingSide, MatchState } from "../domain/rules";
 import { applyOut, createMatchState } from "../domain/rules";
 import type { BallResultKind } from "./ball-results";
+import type { WallballHitResult } from "./fielding";
 import type { Bases, RunnerId, ScoringResult } from "./scoring";
 import { EMPTY_BASES, applyScoringResult } from "./scoring";
 
-export type PlateAppearanceResult = BallResultKind | "triple";
+export type PlateAppearanceResult = BallResultKind | WallballHitResult;
 
 export type MatchFlowBattingOrder = BattingOrder;
 

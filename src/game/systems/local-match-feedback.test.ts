@@ -98,12 +98,12 @@ describe("local match visual feedback projection", () => {
     expect(projectLocalMatchFeedback(out)).toMatchObject({
       primary: {
         kind: "out",
-        text: "Out recorded",
+        text: "Fly out",
         tone: "warning"
       },
       result: {
         kind: "out",
-        text: "Out recorded"
+        text: "Fly out"
       }
     });
 

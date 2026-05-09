@@ -209,6 +209,10 @@ function outText(
     )} begins`;
   }
 
+  if (isDocumentedOutResult(plateAppearance.result)) {
+    return formatPlateAppearanceResult(plateAppearance.result);
+  }
+
   return "Out recorded";
 }
 
@@ -224,6 +228,12 @@ function isHitResult(
     result === "triple" ||
     result === "home-run"
   );
+}
+
+function isDocumentedOutResult(
+  result: PlateAppearanceResult
+): result is Extract<PlateAppearanceResult, "fly-out" | "ground-out"> {
+  return result === "fly-out" || result === "ground-out";
 }
 
 function formatPlateAppearanceResult(result: PlateAppearanceResult): string {

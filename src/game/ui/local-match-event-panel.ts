@@ -114,9 +114,11 @@ function eventLabel(
   }
 
   if (event.kind === "out") {
+    const result = isOutResult(event.result) ? formatResult(event.result) : "out";
+
     return event.playerId
-      ? `${playerDisplayName(players, event.playerId)} out`
-      : "Out recorded";
+      ? `${playerDisplayName(players, event.playerId)} ${result}`
+      : capitalize(result);
   }
 
   if (event.kind === "contact") {
@@ -193,8 +195,15 @@ function isPositiveEvent(event: LocalMatchEvent): boolean {
     (event.kind === "recovery" && event.recoveryKind === "recovered") ||
     (event.kind === "contact" &&
       event.result !== "out" &&
+      !isOutResult(event.result) &&
       event.result !== "miss")
   );
+}
+
+function isOutResult(
+  result: LocalMatchEvent["result"]
+): result is "fly-out" | "ground-out" {
+  return result === "fly-out" || result === "ground-out";
 }
 
 function isMissedPitchInsideZone(event: LocalMatchEvent): boolean {
